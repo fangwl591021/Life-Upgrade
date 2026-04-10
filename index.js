@@ -5,11 +5,12 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 處理 LIFF 課程說明網頁的 GET 請求
-    if (request.method === 'GET' && url.pathname === '/description') {
+    // [修正] 只要是 GET 請求，就視為要開啟課程說明網頁
+    if (request.method === 'GET') {
       return handleLiffDescription(url, env);
     }
 
+    // POST 請求則處理 LINE Webhook
     if (request.method !== 'POST') {
       return new Response('Webhook Hub is running', { status: 200 });
     }
@@ -51,7 +52,8 @@ export default {
  * 產生動態的 LIFF 課程說明網頁
  */
 async function handleLiffDescription(url, env) {
-  const courseId = url.searchParams.get('id');
+  // 優先從網址 query 抓 id
+  let courseId = url.searchParams.get('id');
   
   const html = `
     <!DOCTYPE html>
@@ -63,20 +65,21 @@ async function handleLiffDescription(url, env) {
       <style>
         body { font-family: -apple-system, sans-serif; margin: 0; background: #ffffff; color: #333; }
         .container { min-height: 100vh; padding-bottom: 80px; }
-        img { width: 100%; height: auto; display: block; }
+        .loading-container { padding: 100px 20px; text-align: center; color: #999; }
+        img { width: 100%; height: auto; display: block; background: #eee; min-height: 200px; }
         .content { padding: 20px; }
         h1 { font-size: 24px; margin: 0 0 10px 0; color: #000; }
         .price { color: #FF0000; font-weight: bold; font-size: 22px; margin-bottom: 20px; }
         .desc { line-height: 1.8; font-size: 16px; color: #444; border-top: 1px solid #eee; padding-top: 20px; white-space: pre-wrap; }
         .btn-box { position: fixed; bottom: 0; width: 100%; padding: 15px; box-sizing: border-box; background: white; border-top: 1px solid #eee; }
-        .btn { background: #007AFF; color: white; text-align: center; padding: 14px; border-radius: 10px; text-decoration: none; display: block; font-weight: bold; font-size: 16px; }
+        .btn { background: #007AFF; color: white; text-align: center; padding: 14px; border-radius: 10px; text-decoration: none; display: block; font-weight: bold; font-size: 16px; border: none; width: 100%; cursor: pointer; }
       </style>
     </head>
     <body>
       <div class="container">
-        <div id="loading" style="padding: 100px 20px; text-align: center; color: #999;">讀取課程詳情中...</div>
+        <div id="loading" class="loading-container">正在取得課程資訊...</div>
         <div id="app" style="display:none;">
-          <img id="c-img" src="" />
+          <img id="c-img" src="" alt="Course Image" />
           <div class="content">
             <h1 id="c-name"></h1>
             <div class="price" id="c-price"></div>
@@ -85,30 +88,46 @@ async function handleLiffDescription(url, env) {
         </div>
       </div>
       <div class="btn-box" id="btn-container" style="display:none;">
-        <a href="javascript:void(0)" class="btn" onclick="liff.closeWindow()">關閉並返回</a>
+        <button class="btn" onclick="liff.closeWindow()">關閉說明</button>
       </div>
+
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
-        const courseId = "${courseId}";
-        const gasUrl = "${env.APPS_SCRIPT_URL}?action=getCourseList";
-
+        // 初始化 LIFF
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
+          
+          // 如果網址沒帶 id，嘗試從 LIFF 跳轉前的網址抓取
+          let cid = "${courseId}" || new URL(window.location.href).searchParams.get('id');
+          
+          if (!cid) {
+            document.getElementById('loading').innerText = '未指定課程 ID，請從 LINE 點擊連結。';
+            return;
+          }
+
+          const gasUrl = "${env.APPS_SCRIPT_URL}?action=getCourseList";
+          
           fetch(gasUrl)
             .then(res => res.json())
             .then(result => {
-              const course = result.data.find(c => c.id === courseId);
+              const course = result.data.find(c => c.id === cid);
               if (course) {
                 document.getElementById('c-img').src = course.imageUrl || "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
                 document.getElementById('c-name').innerText = course.name;
                 document.getElementById('c-price').innerText = "NT $" + course.price + " 起";
                 document.getElementById('c-desc').innerText = course.description;
+                
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
                 document.getElementById('btn-container').style.display = 'block';
               } else {
-                document.getElementById('loading').innerText = '找不到該課程資訊。';
+                document.getElementById('loading').innerText = '找不到該課程資訊 (ID: ' + cid + ')。';
               }
+            })
+            .catch(err => {
+              document.getElementById('loading').innerText = '讀取失敗，請確認網路連線。';
             });
+        }).catch(err => {
+          document.getElementById('loading').innerText = 'LIFF 初始化失敗。';
         });
       </script>
     </body>
