@@ -1,4 +1,4 @@
-// 產生第一層：課程分類輪播卡片 (每一類都有專屬大圖)
+// 產生第一層：課程分類輪播卡片 (每一類都有專屬大圖，改為 micro 版型)
 export function generateCategoryFlexMessage(categories) {
   if (!categories || categories.length === 0) return null;
 
@@ -11,12 +11,11 @@ export function generateCategoryFlexMessage(categories) {
   };
 
   const bubbles = categories.map(category => {
-    // 取得對應圖片，若沒對應到則使用預設圖
     const imageUrl = categoryImages[category] || "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png";
 
     return {
       type: "bubble",
-      size: "kilo",
+      size: "micro", // 依照需求改為 micro 版型
       body: {
         type: "box",
         layout: "vertical",
@@ -32,14 +31,13 @@ export function generateCategoryFlexMessage(categories) {
           {
             type: "box",
             layout: "vertical",
-            paddingAll: "lg",
-            spacing: "sm",
+            paddingAll: "sm",
             contents: [
               {
                 type: "text",
                 text: category,
                 weight: "bold",
-                size: "md",
+                size: "sm",
                 align: "center",
                 color: "#333333"
               }
@@ -50,7 +48,7 @@ export function generateCategoryFlexMessage(categories) {
       footer: {
         type: "box",
         layout: "vertical",
-        paddingAll: "sm",
+        paddingAll: "xs",
         contents: [
           {
             type: "button",
