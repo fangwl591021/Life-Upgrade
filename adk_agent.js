@@ -2,7 +2,6 @@ import { getCourseList, updateCustomerProfile, createOrder } from './google_shee
 import { sendTelegramMessage } from './telegram_notifier.js';
 import { generateCourseFlexMessage } from './message_templates.js';
 
-// 定義 Tool Combination 工具清單
 const tools = [
   {
     functionDeclarations: [
@@ -32,12 +31,12 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text;
   const userId = event.source.userId;
 
-  // 組合給 Gemini 的請求內容
   const requestBody = {
     contents: [{ role: "user", parts: [{ text: userMessage }] }],
     tools: tools,
     systemInstruction: {
-      parts: [{ text: "你是專業的課程預約客服機器人。請根據使用者需求查詢課程，並協助建立訂單。需要時請呼叫對應的 function。" }]
+      // 加上強制指令，阻止 AI 閒聊，要求立即讀取清單
+      parts: [{ text: "你是專業的課程預約客服。當使用者提到想上課、想看課程或要求列出時，請『必須』立刻呼叫 getCourseList function 來獲取清單，絕對不要用反問的方式。回覆請俐落。" }]
     }
   };
 
@@ -45,18 +44,20 @@ export async function handleAIRequest(event, env) {
     let aiResponseText = '';
     let flexMessage = null;
 
-    // 呼叫 Gemini API
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
     });
 
-    const data = await geminiRes.json();
-    const candidate = data.candidates[0];
-    const parts = candidate.content.parts;
+    if (!geminiRes.ok) {
+       console.error("Gemini API Error:", await geminiRes.text());
+       return await replyToLINE(event.replyToken, "系統連線異常，請稍後再試。", null, env);
+    }
 
-    // 解析 Gemini 的回覆，判斷是否呼叫 Function
+    const data = await geminiRes.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
+
     for (const part of parts) {
       if (part.functionCall) {
         const fnName = part.functionCall.name;
@@ -64,12 +65,15 @@ export async function handleAIRequest(event, env) {
 
         if (fnName === 'getCourseList') {
           const courses = await getCourseList(env);
-          aiResponseText = `我們目前有以下課程：\n${courses.map(c => `- ${c.name} ($${c.price})`).join('\n')}\n請問想預約哪一堂？`;
-          flexMessage = generateCourseFlexMessage(courses);
+          if (courses && courses.length > 0) {
+            aiResponseText = "為您列出目前的課程：";
+            flexMessage = generateCourseFlexMessage(courses);
+          } else {
+            aiResponseText = "目前沒有可報名的課程或系統整理中，請稍後再試。";
+          }
         } else if (fnName === 'createOrder') {
           await createOrder(args.lineUid || userId, args.courseId, args.amount, env);
           aiResponseText = `已為您完成預約紀錄！課程ID：${args.courseId}。`;
-          // 訂單成立同時發送 Telegram 通知
           await sendTelegramMessage(`新訂單建立！\n客戶：${userId}\n課程：${args.courseId}\n金額：${args.amount}`, env);
         }
       } else if (part.text) {
@@ -82,22 +86,19 @@ export async function handleAIRequest(event, env) {
       aiResponseText = "處理您的請求時發生狀況，請稍後再試。";
     }
 
-    // 回覆給 LINE 使用者
     await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
 
   } catch (error) {
-    console.error('Gemini AI Error:', error);
-    await replyToLINE(event.replyToken, "系統忙碌中，請稍後再試。", null, env);
+    console.error('Agent Logic Error:', error);
   }
 }
 
-// 封裝 LINE 回覆 API
 async function replyToLINE(replyToken, text, flexMessage, env) {
   const messages = [];
   if (text) messages.push({ type: 'text', text: text });
   if (flexMessage) messages.push(flexMessage);
 
-  await fetch('https://api.line.me/v2/bot/message/reply', {
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -108,4 +109,10 @@ async function replyToLINE(replyToken, text, flexMessage, env) {
       messages: messages
     })
   });
+
+  // 如果發送 Flex 失敗，將錯誤印出以利除錯
+  if (!res.ok) {
+    console.error("LINE API 發送失敗:", await res.text());
+    console.error("發送的 Payload:", JSON.stringify(messages));
+  }
 }
