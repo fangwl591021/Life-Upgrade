@@ -23,7 +23,7 @@ const tools = [
       },
       {
         name: "createOrder",
-        description: "在 Orders 表中寫入預約報名紀錄",
+        description: "正式寫入預約報名紀錄到 Orders 表中",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -38,6 +38,26 @@ const tools = [
   }
 ];
 
+// 指數退避重試函式
+async function fetchGeminiWithRetry(url, options, maxRetries = 5) {
+  let delay = 1000;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url, options);
+      // 如果成功或是非 503/429 錯誤，直接回傳
+      if (response.ok || (response.status !== 503 && response.status !== 429)) {
+        return response;
+      }
+    } catch (err) {
+      // 網路層級錯誤也進行重試
+    }
+    // 等待後重試: 1s, 2s, 4s, 8s, 16s
+    await new Promise(resolve => setTimeout(resolve, delay));
+    delay *= 2;
+  }
+  return await fetch(url, options); // 最後一次嘗試
+}
+
 export async function handleAIRequest(event, env) {
   const userMessage = event.message.text;
   const userId = event.source.userId;
@@ -46,7 +66,11 @@ export async function handleAIRequest(event, env) {
     contents: [{ role: "user", parts: [{ text: userMessage }] }],
     tools: tools,
     systemInstruction: {
-      parts: [{ text: "你是課程客服。當用戶想看課程，先呼叫 getCourseCategories 列出階段分類。用戶選定階段後，再呼叫 getCourseList 顯示該類的課程卡片。禁止反問，直接執行 Tool。" }]
+      parts: [{ text: `你是課程客服。
+1. 當用戶想看課程，呼叫 getCourseCategories。
+2. 用戶選定分類，呼叫 getCourseList。
+3. 若訊息含「我想預約 [名] (編號:[ID], 金額:[價])」，請立刻呼叫 createOrder，禁止閒聊。
+4. 預約後回覆：『已為您完成預約！後續將由專人與您聯繫。』` }]
     }
   };
 
@@ -54,17 +78,20 @@ export async function handleAIRequest(event, env) {
     let aiResponseText = '';
     let flexMessage = null;
 
-    // 呼叫 Gemini
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
+    // 使用重試機制呼叫 Gemini API (更新模型為穩定預覽版)
+    const geminiRes = await fetchGeminiWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      }
+    );
 
     if (!geminiRes.ok) {
       const errorDetail = await geminiRes.text();
-      await sendTelegramMessage(`❌ Gemini API 失敗: ${errorDetail}`, env);
-      return await replyToLINE(event.replyToken, "系統 AI 連線失敗，請檢查 API Key。", null, env);
+      await sendTelegramMessage(`❌ Gemini API 最終失敗: ${errorDetail}`, env);
+      return await replyToLINE(event.replyToken, "系統服務繁忙，請稍後再試一次。", null, env);
     }
 
     const data = await geminiRes.json();
@@ -81,8 +108,7 @@ export async function handleAIRequest(event, env) {
             aiResponseText = "請選擇您感興趣的課程類型：";
             flexMessage = generateCategoryFlexMessage(categories);
           } else {
-            aiResponseText = "暫時查不到課程分類，請確認試算表設定。";
-            await sendTelegramMessage("⚠️ 課程分類讀取結果為空，請檢查 Google Sheets 或 GAS。", env);
+            aiResponseText = "暫時查不到課程分類。";
           }
         } else if (fnName === 'getCourseList') {
           const courses = await getCourseList(args.category, env);
@@ -90,12 +116,12 @@ export async function handleAIRequest(event, env) {
             aiResponseText = `以下是「${args.category}」的課程細項：`;
             flexMessage = generateCourseFlexMessage(courses);
           } else {
-            aiResponseText = `目前「${args.category}」分類下沒有開放中的課程。`;
+            aiResponseText = `目前該分類下沒有開放中的課程。`;
           }
         } else if (fnName === 'createOrder') {
           await createOrder(userId, args.courseId, args.amount, env);
-          aiResponseText = "已為您完成預約！";
-          await sendTelegramMessage(`✅ 新預約：${userId}\n課程：${args.courseId}`, env);
+          aiResponseText = "已為您完成預約！後續將由專人與您聯繫。";
+          await sendTelegramMessage(`✅ 新預約報名！\n使用者：${userId}\n課程ID：${args.courseId}`, env);
         }
       } else if (part.text) {
         aiResponseText += part.text;
@@ -115,7 +141,7 @@ async function replyToLINE(replyToken, text, flexMessage, env) {
   if (text) messages.push({ type: 'text', text: text });
   if (flexMessage) messages.push(flexMessage);
 
-  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+  await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -123,9 +149,4 @@ async function replyToLINE(replyToken, text, flexMessage, env) {
     },
     body: JSON.stringify({ replyToken, messages })
   });
-  
-  if (!res.ok) {
-    const err = await res.text();
-    await sendTelegramMessage(`❌ LINE 回覆失敗: ${err}`, env);
-  }
 }
