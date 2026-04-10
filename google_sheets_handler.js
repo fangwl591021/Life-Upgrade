@@ -1,40 +1,28 @@
 export async function getCourseCategories(env) {
   try {
-    const response = await fetch(`${env.APPS_SCRIPT_URL}?action=getCourseCategories`, {
-      method: 'GET'
-    });
-    const result = await response.json();
-    return result.data || [];
-  } catch (e) {
-    console.error('getCourseCategories Error:', e);
-    return [];
-  }
+    const res = await fetch(`${env.APPS_SCRIPT_URL}?action=getCourseCategories`);
+    const json = await res.json();
+    return json.data || [];
+  } catch (e) { return []; }
 }
 
-// 支援傳入 category 來篩選課程
 export async function getCourseList(category, env) {
   try {
-    const url = category 
-      ? `${env.APPS_SCRIPT_URL}?action=getCourseList&category=${encodeURIComponent(category)}`
-      : `${env.APPS_SCRIPT_URL}?action=getCourseList`;
-      
-    const response = await fetch(url, { method: 'GET' });
-    const result = await response.json();
-    return result.data || [];
-  } catch (e) {
-    console.error('getCourseList Error:', e);
-    return [];
-  }
+    const url = `${env.APPS_SCRIPT_URL}?action=getCourseList&category=${encodeURIComponent(category)}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    return json.data || [];
+  } catch (e) { return []; }
 }
 
-export async function updateCustomerProfile(userData, env) {
+// [新增] 抓取使用者訂單
+export async function getUserOrders(lineUid, env) {
   try {
-    await fetch(env.APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateCustomer', data: userData })
-    });
-  } catch (e) { console.error('updateCustomerProfile Error:', e); }
+    const url = `${env.APPS_SCRIPT_URL}?action=getUserOrders&lineUid=${lineUid}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    return json.data || [];
+  } catch (e) { return []; }
 }
 
 export async function createOrder(lineUid, courseId, amount, env) {
@@ -42,10 +30,18 @@ export async function createOrder(lineUid, courseId, amount, env) {
     await fetch(env.APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'createOrder',
-        data: { lineUid, courseId, amount, timestamp: new Date().toISOString() }
-      })
+      body: JSON.stringify({ action: 'createOrder', data: { lineUid, courseId, amount } })
     });
-  } catch (e) { console.error('createOrder Error:', e); }
+  } catch (e) {}
+}
+
+// [新增] 取消報名
+export async function cancelOrder(orderId, env) {
+  try {
+    await fetch(env.APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
+    });
+  } catch (e) {}
 }
