@@ -2,60 +2,62 @@ import { getCourseCategories, getCourseList, createOrder } from './google_sheets
 import { sendTelegramMessage } from './telegram_notifier.js';
 import { generateCategoryFlexMessage, generateCourseFlexMessage } from './message_templates.js';
 
+// OpenAI 工具定義
 const tools = [
   {
-    functionDeclarations: [
-      {
-        name: "getCourseCategories",
-        description: "查詢所有的課程分類、階段或類型清單",
-        parameters: { type: "OBJECT", properties: {} }
-      },
-      {
-        name: "getCourseList",
-        description: "根據特定的分類名稱讀取課程詳細清單",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            category: { type: "STRING", description: "課程分類名稱" }
-          },
-          required: ["category"]
-        }
-      },
-      {
-        name: "createOrder",
-        description: "正式寫入預約報名紀錄到 Orders 表中",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            lineUid: { type: "STRING", description: "LINE UID" },
-            courseId: { type: "STRING", description: "課程 ID" },
-            amount: { type: "NUMBER", description: "金額" }
-          },
-          required: ["lineUid", "courseId", "amount"]
-        }
+    type: "function",
+    function: {
+      name: "getCourseCategories",
+      description: "查詢所有的課程分類、階段或類型清單",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "getCourseList",
+      description: "根據特定的分類名稱讀取課程詳細清單",
+      parameters: {
+        type: "object",
+        properties: {
+          category: { type: "string", description: "課程分類名稱" }
+        },
+        required: ["category"]
       }
-    ]
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "createOrder",
+      description: "正式寫入預約報名紀錄到 Orders 表中",
+      parameters: {
+        type: "object",
+        properties: {
+          lineUid: { type: "string", description: "LINE UID" },
+          courseId: { type: "string", description: "課程 ID" },
+          amount: { type: "number", description: "金額" }
+        },
+        required: ["lineUid", "courseId", "amount"]
+      }
+    }
   }
 ];
 
 // 指數退避重試函式
-async function fetchGeminiWithRetry(url, options, maxRetries = 5) {
+async function fetchWithRetry(url, options, maxRetries = 3) {
   let delay = 1000;
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await fetch(url, options);
-      // 如果成功或是非 503/429 錯誤，直接回傳
-      if (response.ok || (response.status !== 503 && response.status !== 429)) {
+      if (response.ok || (response.status !== 429 && response.status < 500)) {
         return response;
       }
-    } catch (err) {
-      // 網路層級錯誤也進行重試
-    }
-    // 等待後重試: 1s, 2s, 4s, 8s, 16s
+    } catch (err) {}
     await new Promise(resolve => setTimeout(resolve, delay));
     delay *= 2;
   }
-  return await fetch(url, options); // 最後一次嘗試
+  return await fetch(url, options);
 }
 
 export async function handleAIRequest(event, env) {
@@ -63,44 +65,51 @@ export async function handleAIRequest(event, env) {
   const userId = event.source.userId;
 
   const requestBody = {
-    contents: [{ role: "user", parts: [{ text: userMessage }] }],
+    model: "gpt-4o", // 使用最先進的 gpt-4o 模型
+    messages: [
+      {
+        role: "system",
+        content: `你是課程客服。
+1. 當用戶想看課程，請立刻呼叫 getCourseCategories 顯示分類選項。
+2. 當用戶選定分類，請立刻呼叫 getCourseList 顯示課程卡片。
+3. 重要：若用戶訊息包含「我想預約 [課程名] (編號:[ID], 金額:[價])」，這是用戶點擊了報名按鈕。請『禁止閒聊』，直接呼叫 createOrder 並傳入正確的 ID 與金額。
+4. 成功後回覆：『已為您完成預約！後續將由專人與您聯繫。』回覆風格需簡潔，模擬 LINE 原生客服感。`
+      },
+      { role: "user", content: userMessage }
+    ],
     tools: tools,
-    systemInstruction: {
-      parts: [{ text: `你是課程客服。
-1. 當用戶想看課程，呼叫 getCourseCategories。
-2. 用戶選定分類，呼叫 getCourseList。
-3. 若訊息含「我想預約 [名] (編號:[ID], 金額:[價])」，請立刻呼叫 createOrder，禁止閒聊。
-4. 預約後回覆：『已為您完成預約！後續將由專人與您聯繫。』` }]
-    }
+    tool_choice: "auto"
   };
 
   try {
-    let aiResponseText = '';
-    let flexMessage = null;
-
-    // 使用重試機制呼叫 Gemini API (更新模型為穩定預覽版)
-    const geminiRes = await fetchGeminiWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${env.GEMINI_API_KEY}`,
+    const gptRes = await fetchWithRetry(
+      "https://api.openai.com/v1/chat/completions",
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${env.OPENAI_API_KEY}`
+        },
         body: JSON.stringify(requestBody)
       }
     );
 
-    if (!geminiRes.ok) {
-      const errorDetail = await geminiRes.text();
-      await sendTelegramMessage(`❌ Gemini API 最終失敗: ${errorDetail}`, env);
-      return await replyToLINE(event.replyToken, "系統服務繁忙，請稍後再試一次。", null, env);
+    if (!gptRes.ok) {
+      const errorDetail = await gptRes.text();
+      await sendTelegramMessage(`❌ GPT API 失敗: ${errorDetail}`, env);
+      return;
     }
 
-    const data = await geminiRes.json();
-    const parts = data.candidates?.[0]?.content?.parts || [];
+    const data = await gptRes.json();
+    const message = data.choices[0].message;
 
-    for (const part of parts) {
-      if (part.functionCall) {
-        const fnName = part.functionCall.name;
-        const args = part.functionCall.args;
+    let aiResponseText = '';
+    let flexMessage = null;
+
+    if (message.tool_calls) {
+      for (const toolCall of message.tool_calls) {
+        const fnName = toolCall.function.name;
+        const args = JSON.parse(toolCall.function.arguments);
 
         if (fnName === 'getCourseCategories') {
           const categories = await getCourseCategories(env);
@@ -121,18 +130,19 @@ export async function handleAIRequest(event, env) {
         } else if (fnName === 'createOrder') {
           await createOrder(userId, args.courseId, args.amount, env);
           aiResponseText = "已為您完成預約！後續將由專人與您聯繫。";
-          await sendTelegramMessage(`✅ 新預約報名！\n使用者：${userId}\n課程ID：${args.courseId}`, env);
+          await sendTelegramMessage(`✅ 新預約報名！\n使用者：${userId}\n課程：${args.courseId}\n金額：${args.amount}`, env);
         }
-      } else if (part.text) {
-        aiResponseText += part.text;
       }
+    } else {
+      aiResponseText = message.content;
     }
 
-    await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
+    if (aiResponseText || flexMessage) {
+      await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
+    }
 
   } catch (error) {
-    await sendTelegramMessage(`❌ 執行緒錯誤: ${error.message}`, env);
-    await replyToLINE(event.replyToken, "抱歉，處理過程中發生技術錯誤。", null, env);
+    await sendTelegramMessage(`❌ GPT 處理錯誤: ${error.message}`, env);
   }
 }
 
