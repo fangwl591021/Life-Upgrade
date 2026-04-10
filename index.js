@@ -5,12 +5,11 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // [修正] 只要是 GET 請求，就視為要開啟課程說明網頁
+    // 處理 LIFF 課程說明網頁的 GET 請求
     if (request.method === 'GET') {
       return handleLiffDescription(url, env);
     }
 
-    // POST 請求則處理 LINE Webhook
     if (request.method !== 'POST') {
       return new Response('Webhook Hub is running', { status: 200 });
     }
@@ -27,7 +26,8 @@ export default {
         if (event.type === 'message' && event.message.type === 'text') {
           const text = event.message.text.trim();
           
-          const aiKeywords = ['預約', '上課', '課程', '階段', '工作坊', '清單', '編號:', '哪些'];
+          // 擴充攔截關鍵字，確保「報名」、「紀錄」不會跑去 WP
+          const aiKeywords = ['預約', '上課', '課程', '階段', '工作坊', '清單', '編號:', '哪些', '報名', '紀錄', '查'];
           const isAIIntent = aiKeywords.some(keyword => text.includes(keyword));
 
           if (isAIIntent) {
@@ -52,9 +52,7 @@ export default {
  * 產生動態的 LIFF 課程說明網頁
  */
 async function handleLiffDescription(url, env) {
-  // 優先從網址 query 抓 id
   let courseId = url.searchParams.get('id');
-  
   const html = `
     <!DOCTYPE html>
     <html>
@@ -90,53 +88,35 @@ async function handleLiffDescription(url, env) {
       <div class="btn-box" id="btn-container" style="display:none;">
         <button class="btn" onclick="liff.closeWindow()">關閉說明</button>
       </div>
-
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
-        // 初始化 LIFF
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
-          
-          // 如果網址沒帶 id，嘗試從 LIFF 跳轉前的網址抓取
           let cid = "${courseId}" || new URL(window.location.href).searchParams.get('id');
-          
           if (!cid) {
-            document.getElementById('loading').innerText = '未指定課程 ID，請從 LINE 點擊連結。';
+            document.getElementById('loading').innerText = '未指定課程 ID。';
             return;
           }
-
           const gasUrl = "${env.APPS_SCRIPT_URL}?action=getCourseList";
-          
-          fetch(gasUrl)
-            .then(res => res.json())
-            .then(result => {
-              const course = result.data.find(c => c.id === cid);
-              if (course) {
-                document.getElementById('c-img').src = course.imageUrl || "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
-                document.getElementById('c-name').innerText = course.name;
-                document.getElementById('c-price').innerText = "NT $" + course.price + " 起";
-                document.getElementById('c-desc').innerText = course.description;
-                
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('app').style.display = 'block';
-                document.getElementById('btn-container').style.display = 'block';
-              } else {
-                document.getElementById('loading').innerText = '找不到該課程資訊 (ID: ' + cid + ')。';
-              }
-            })
-            .catch(err => {
-              document.getElementById('loading').innerText = '讀取失敗，請確認網路連線。';
-            });
-        }).catch(err => {
-          document.getElementById('loading').innerText = 'LIFF 初始化失敗。';
+          fetch(gasUrl).then(res => res.json()).then(result => {
+            const course = result.data.find(c => c.id === cid);
+            if (course) {
+              document.getElementById('c-img').src = course.imageUrl || "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
+              document.getElementById('c-name').innerText = course.name;
+              document.getElementById('c-price').innerText = "NT $" + course.price + " 起";
+              document.getElementById('c-desc').innerText = course.description;
+              document.getElementById('loading').style.display = 'none';
+              document.getElementById('app').style.display = 'block';
+              document.getElementById('btn-container').style.display = 'block';
+            } else {
+              document.getElementById('loading').innerText = '找不到該課程資訊。';
+            }
+          });
         });
       </script>
     </body>
     </html>
   `;
-  
-  return new Response(html, {
-    headers: { 'Content-Type': 'text/html;charset=UTF-8' }
-  });
+  return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
 
 async function triggerLoadingAnimation(userId, env) {
