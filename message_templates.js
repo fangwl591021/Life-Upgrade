@@ -1,11 +1,55 @@
+// 產生第一層：課程分類選項 Flex Message
+export function generateCategoryFlexMessage(categories) {
+  if (!categories || categories.length === 0) return null;
+
+  const buttons = categories.map(category => ({
+    type: "button",
+    action: {
+      type: "message",
+      label: `✓  ${category}`, // 加上你截圖中的勾勾圖示
+      text: `我想查詢 ${category} 的課程` // 隱藏指令
+    },
+    height: "sm",
+    style: "link", // 使用純文字連結，無框線，貼近原生感
+    color: "#333333",
+    margin: "xs"
+  }));
+
+  return {
+    type: "flex",
+    altText: "請選擇課程類型",
+    contents: {
+      type: "bubble",
+      size: "kilo", // 保持窄版不佔版面
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "lg",
+        contents: [
+          {
+            type: "text",
+            text: "請選擇階段 / 類型",
+            weight: "bold",
+            size: "sm",
+            color: "#666666",
+            align: "center"
+          },
+          {
+            type: "separator",
+            margin: "md"
+          },
+          ...buttons
+        ]
+      }
+    }
+  };
+}
+
+// 產生第二層：實際課程細項 Flex Message (維持上一版的極簡設定)
 export function generateCourseFlexMessage(courses) {
   if (!courses || courses.length === 0) return null;
 
-  // 限制最多顯示 10 筆，避免超出 LINE 輪播卡片的數量限制
   const bubbles = courses.slice(0, 10).map(course => {
-    
-    // LINE Flex 圖片必須是 https 開頭的公開網址，不支援 base64
-    // 若無有效網址，則套用預設圖片
     let validImageUrl = "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
     if (course.imageUrl && course.imageUrl.toString().startsWith("https://")) {
       validImageUrl = course.imageUrl;
