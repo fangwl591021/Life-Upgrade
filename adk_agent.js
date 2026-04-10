@@ -61,52 +61,62 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // --- 快速指令攔截 (Fast Path) ---
-  // 這裡攔截固定格式的按鈕訊息，跳過 AI 運算，達成秒回
+  // --- 快速指令攔截 (Fast Path) - 繞過 AI 運算以達成秒回 ---
   
-  // 1. 處理：查看課程首頁
-  if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
+  // 1. 處理：查看課程首頁 (分類選單)
+  if (userMessage === '我想看課程' || userMessage === '有哪些課程' || userMessage === '課程列表') {
     const categories = await getCourseCategories(env);
-    return await replyToLINE(event.replyToken, "為您列出課程類型：", generateCategoryFlexMessage(categories), env);
+    if (categories && categories.length > 0) {
+      return await replyToLINE(event.replyToken, "為您列出課程類型：", generateCategoryFlexMessage(categories), env);
+    } else {
+      return await replyToLINE(event.replyToken, "目前暫時沒有開放的課程分類。", null, env);
+    }
   }
 
   // 2. 處理：點擊特定分類 (格式: 我想查詢 [分類] 的課程)
   const categoryMatch = userMessage.match(/^我想查詢\s*(.+)\s*的課程$/);
   if (categoryMatch) {
-    const category = categoryMatch[1];
+    const category = categoryMatch[1].trim();
     const courses = await getCourseList(category, env);
-    if (courses.length > 0) {
-      return await replyToLINE(event.replyToken, `「${category}」的課程如下：`, generateCourseFlexMessage(courses), env);
+    if (courses && courses.length > 0) {
+      return await replyToLINE(event.replyToken, `以下是「${category}」的課程細項：`, generateCourseFlexMessage(courses), env);
+    } else {
+      // 關鍵優化：若沒資料就報錯，不要讓它墜落到 AI 邏輯去鬼打牆
+      return await replyToLINE(event.replyToken, `目前「${category}」分類下暫無開放課程。`, null, env);
     }
   }
 
   // 3. 處理：報名紀錄查詢
   if (userMessage === '我的報名' || userMessage === '報名紀錄' || userMessage === '查詢報名') {
     const orders = await getUserOrders(userId, env);
-    if (orders.length > 0) {
-      return await replyToLINE(event.replyToken, "這是您的報名紀錄：", generateOrderListFlexMessage(orders), env);
+    if (orders && orders.length > 0) {
+      return await replyToLINE(event.replyToken, "這是您的報名紀錄與匯款資訊：", generateOrderListFlexMessage(orders), env);
     } else {
-      return await replyToLINE(event.replyToken, "目前查無您的報名紀錄喔。", null, env);
+      return await replyToLINE(event.replyToken, "查無報名紀錄，快去看看有什麼好課吧！", null, env);
     }
   }
 
   // 4. 處理：一鍵預約報名 (格式: 我想預約 [名稱] (編號:[ID], 金額:[價]))
   const orderMatch = userMessage.match(/\(編號:(.+),\s*金額:(\d+)\)/);
   if (orderMatch) {
-    const courseId = orderMatch[1];
+    const courseId = orderMatch[1].trim();
     const amount = parseInt(orderMatch[2]);
     await createOrder(userId, courseId, amount, env);
-    await sendTelegramMessage(`✅ 新報名成功：${userId}\n課程ID：${courseId}`, env);
+    await sendTelegramMessage(`✅ 新報名：${userId}\n課程ID：${courseId}`, env);
     return await replyToLINE(event.replyToken, "已為您完成預約！後續將由專人聯繫。", null, env);
   }
 
-  // --- 若不符合上述固定格式，才進入 AI 運算 (GPT-4o) ---
+  // --- 若不符合上述固定格式，才呼叫 GPT-4o 處理 ---
   const requestBody = {
     model: "gpt-4o",
     messages: [
       {
         role: "system",
-        content: `你是專業課程客服。請引導用戶查詢課程、預約或查看報名。若用戶想看分類請呼叫 getCourseCategories；想看特定分類請呼叫 getCourseList。`
+        content: `你是專業課程客服。
+1. 嚴禁反問用戶分類。
+2. 若用戶提到具體類別，呼叫 getCourseList。
+3. 若用戶只是隨意詢問，呼叫 getCourseCategories。
+4. 回覆需極簡、原生感。`
       },
       { role: "user", content: userMessage }
     ],
@@ -130,7 +140,7 @@ export async function handleAIRequest(event, env) {
     if (message.tool_calls) {
       for (const toolCall of message.tool_calls) {
         const fnName = toolCall.function.name;
-        const args = JSON.parse(toolCall.function.arguments);
+        const args = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
 
         if (fnName === 'getCourseCategories') {
           const categories = await getCourseCategories(env);
@@ -144,7 +154,7 @@ export async function handleAIRequest(event, env) {
           const orders = await getUserOrders(userId, env);
           if (orders.length > 0) {
             flexMessage = generateOrderListFlexMessage(orders);
-            aiResponseText = "這是您的報名紀錄：";
+            aiResponseText = "您的報名紀錄：";
           } else {
             aiResponseText = "查無報名紀錄。";
           }
@@ -158,7 +168,7 @@ export async function handleAIRequest(event, env) {
       await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
     }
   } catch (error) {
-    console.error(error);
+    console.error('AI Request Error:', error);
   }
 }
 
