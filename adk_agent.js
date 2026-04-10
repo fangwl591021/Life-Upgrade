@@ -7,7 +7,7 @@ const tools = [
     type: "function",
     function: {
       name: "getCourseCategories",
-      description: "查詢所有可用的課程分類（如：一般、工作坊等）。僅當用戶沒提到具體類別時才使用。",
+      description: "查詢所有可用的課程分類、階段或類型清單。",
       parameters: { type: "object", properties: {} }
     }
   },
@@ -15,7 +15,7 @@ const tools = [
     type: "function",
     function: {
       name: "getCourseList",
-      description: "根據類別獲取具體課程清單。當訊息中包含『一般』、『工作坊』、『蛻變』或『完整』時，必須優先呼叫此功能。",
+      description: "根據特定的分類名稱讀取課程詳細清單。",
       parameters: {
         type: "object",
         properties: { category: { type: "string" } },
@@ -35,7 +35,7 @@ const tools = [
     type: "function",
     function: {
       name: "createOrder",
-      description: "建立新報名訂單。",
+      description: "正式寫入預約報名紀錄到 Orders 表中。",
       parameters: {
         type: "object",
         properties: { lineUid: { type: "string" }, courseId: { type: "string" }, amount: { type: "number" } },
@@ -58,20 +58,55 @@ const tools = [
 ];
 
 export async function handleAIRequest(event, env) {
-  const userMessage = event.message.text;
+  const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
+  // --- 快速指令攔截 (Fast Path) ---
+  // 這裡攔截固定格式的按鈕訊息，跳過 AI 運算，達成秒回
+  
+  // 1. 處理：查看課程首頁
+  if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
+    const categories = await getCourseCategories(env);
+    return await replyToLINE(event.replyToken, "為您列出課程類型：", generateCategoryFlexMessage(categories), env);
+  }
+
+  // 2. 處理：點擊特定分類 (格式: 我想查詢 [分類] 的課程)
+  const categoryMatch = userMessage.match(/^我想查詢\s*(.+)\s*的課程$/);
+  if (categoryMatch) {
+    const category = categoryMatch[1];
+    const courses = await getCourseList(category, env);
+    if (courses.length > 0) {
+      return await replyToLINE(event.replyToken, `「${category}」的課程如下：`, generateCourseFlexMessage(courses), env);
+    }
+  }
+
+  // 3. 處理：報名紀錄查詢
+  if (userMessage === '我的報名' || userMessage === '報名紀錄' || userMessage === '查詢報名') {
+    const orders = await getUserOrders(userId, env);
+    if (orders.length > 0) {
+      return await replyToLINE(event.replyToken, "這是您的報名紀錄：", generateOrderListFlexMessage(orders), env);
+    } else {
+      return await replyToLINE(event.replyToken, "目前查無您的報名紀錄喔。", null, env);
+    }
+  }
+
+  // 4. 處理：一鍵預約報名 (格式: 我想預約 [名稱] (編號:[ID], 金額:[價]))
+  const orderMatch = userMessage.match(/\(編號:(.+),\s*金額:(\d+)\)/);
+  if (orderMatch) {
+    const courseId = orderMatch[1];
+    const amount = parseInt(orderMatch[2]);
+    await createOrder(userId, courseId, amount, env);
+    await sendTelegramMessage(`✅ 新報名成功：${userId}\n課程ID：${courseId}`, env);
+    return await replyToLINE(event.replyToken, "已為您完成預約！後續將由專人聯繫。", null, env);
+  }
+
+  // --- 若不符合上述固定格式，才進入 AI 運算 (GPT-4o) ---
   const requestBody = {
     model: "gpt-4o",
     messages: [
       {
         role: "system",
-        content: `你是專業課程客服。
-1. **嚴禁反問**：禁止使用文字詢問用戶想看哪種分類。若用戶想看課程，請直接呼叫 getCourseCategories 或 getCourseList（若已提到關鍵字）。
-2. **優先級**：若訊息含『一般』、『工作坊』、『蛻變』或『完整』，立即呼叫 getCourseList。
-3. **查詢紀錄**：若訊息含『報名』、『紀錄』、『我的』，立即呼叫 getUserOrders。
-4. **一鍵執行**：嚴格執行工具呼叫，不要進行多餘的對話。
-5. 報名成功回覆：『已為您完成預約！後續將由專人聯繫。』`
+        content: `你是專業課程客服。請引導用戶查詢課程、預約或查看報名。若用戶想看分類請呼叫 getCourseCategories；想看特定分類請呼叫 getCourseList。`
       },
       { role: "user", content: userMessage }
     ],
@@ -111,15 +146,8 @@ export async function handleAIRequest(event, env) {
             flexMessage = generateOrderListFlexMessage(orders);
             aiResponseText = "這是您的報名紀錄：";
           } else {
-            aiResponseText = "查無您的報名紀錄。";
+            aiResponseText = "查無報名紀錄。";
           }
-        } else if (fnName === 'createOrder') {
-          await createOrder(userId, args.courseId, args.amount, env);
-          aiResponseText = "已完成預約！後續由專人聯繫。";
-          await sendTelegramMessage(`✅ 新報名：${userId}`, env);
-        } else if (fnName === 'cancelOrder') {
-          await cancelOrder(args.orderId, env);
-          aiResponseText = `單號 ${args.orderId} 已申請取消。`;
         }
       }
     } else {
@@ -129,13 +157,16 @@ export async function handleAIRequest(event, env) {
     if (aiResponseText || flexMessage) {
       await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
     }
-  } catch (error) { console.error(error); }
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
   const messages = [];
   if (text) messages.push({ type: 'text', text: text });
   if (flexMessage) messages.push(flexMessage);
+  
   await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
