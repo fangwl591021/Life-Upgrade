@@ -7,7 +7,7 @@ const tools = [
     type: "function",
     function: {
       name: "getCourseCategories",
-      description: "查詢所有的課程分類清單",
+      description: "重要：僅在用戶詢問『一般性的課程、有哪些課』且未指定任何分類時呼叫，用來列出第一層分類選單。",
       parameters: { type: "object", properties: {} }
     }
   },
@@ -15,7 +15,7 @@ const tools = [
     type: "function",
     function: {
       name: "getCourseList",
-      description: "根據分類讀取課程詳細清單",
+      description: "重要：當用戶訊息中已明確提到分類名稱（如一般、工作坊、蛻變階段、完整階段）時呼叫，用來列出該分類下的具體課程卡片。",
       parameters: {
         type: "object",
         properties: { category: { type: "string", description: "分類名稱" } },
@@ -27,7 +27,7 @@ const tools = [
     type: "function",
     function: {
       name: "getUserOrders",
-      description: "查詢當前使用者的所有報名紀錄與狀態",
+      description: "查詢當前使用者的報名紀錄、訂單狀態與匯款帳號資訊。",
       parameters: { type: "object", properties: {} }
     }
   },
@@ -35,7 +35,7 @@ const tools = [
     type: "function",
     function: {
       name: "createOrder",
-      description: "正式寫入預約報名紀錄",
+      description: "正式提交報名，在試算表中建立新訂單。",
       parameters: {
         type: "object",
         properties: {
@@ -51,10 +51,10 @@ const tools = [
     type: "function",
     function: {
       name: "cancelOrder",
-      description: "取消特定的報名紀錄",
+      description: "取消使用者的特定報名訂單。",
       parameters: {
         type: "object",
-        properties: { orderId: { type: "string", description: "訂單單號" } },
+        properties: { orderId: { type: "string", description: "訂單編號" } },
         required: ["orderId"]
       }
     }
@@ -70,12 +70,12 @@ export async function handleAIRequest(event, env) {
     messages: [
       {
         role: "system",
-        content: `你是專業課程客服。
-1. 用戶想看課程，呼叫 getCourseCategories。
-2. 用戶想查詢『我的報名』、『報名紀錄』或『匯款資訊』，請呼叫 getUserOrders。
-3. 若用戶訊息含『我想取消報名 (單號:[ID])』，請呼叫 cancelOrder。
-4. 若用戶訊息含『我想回報匯款』，請提示用戶提供帳號末五碼，以便財務核對。
-5. 預約成功後回覆：『已為您完成預約！後續將由專人與您聯繫。』回覆風格簡潔原生。`
+        content: `你是專業課程客服。請依序執行以下邏輯，嚴禁跳回已完成的步驟：
+1. 若用戶詢問『我的報名』、『報名紀錄』或『查詢進度』，必須立刻呼叫 getUserOrders。
+2. 若用戶訊息中已帶有分類名稱（一般、工作坊、蛻變階段、完整階段），禁止呼叫 getCourseCategories，請直接呼叫 getCourseList 傳入該分類。
+3. 僅在用戶完全沒說要看哪一類時，才呼叫 getCourseCategories 顯示首頁選單。
+4. 若點擊報名按鈕（訊息含編號與金額），立刻呼叫 createOrder。
+5. 取消報名請呼叫 cancelOrder。回覆需簡潔、專業、原生感。`
       },
       { role: "user", content: userMessage }
     ],
@@ -123,13 +123,17 @@ export async function handleAIRequest(event, env) {
           await sendTelegramMessage(`✅ 新報名：${userId}\n課程：${args.courseId}`, env);
         } else if (fnName === 'cancelOrder') {
           await cancelOrder(args.orderId, env);
-          aiResponseText = `單號 ${args.orderId} 的報名已為您提交取消申請。`;
-          await sendTelegramMessage(`⚠️ 客戶取消：${userId}\n單號：${args.orderId}`, env);
+          aiResponseText = `單號 ${args.orderId} 的報名已提交取消申請。`;
+          await sendTelegramMessage(`⚠️ 訂單取消：${userId}\n單號：${args.orderId}`, env);
         }
       }
-    } else { aiResponseText = message.content; }
+    } else {
+      aiResponseText = message.content;
+    }
 
-    await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
+    if (aiResponseText || flexMessage) {
+      await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
+    }
   } catch (error) { console.error(error); }
 }
 
