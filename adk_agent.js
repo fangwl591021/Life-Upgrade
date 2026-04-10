@@ -1,14 +1,25 @@
-import { getCourseList, updateCustomerProfile, createOrder } from './google_sheets_handler.js';
+import { getCourseCategories, getCourseList, updateCustomerProfile, createOrder } from './google_sheets_handler.js';
 import { sendTelegramMessage } from './telegram_notifier.js';
-import { generateCourseFlexMessage } from './message_templates.js';
+import { generateCategoryFlexMessage, generateCourseFlexMessage } from './message_templates.js';
 
 const tools = [
   {
     functionDeclarations: [
       {
-        name: "getCourseList",
-        description: "讀取現有課程列表與價格",
+        name: "getCourseCategories",
+        description: "第一步：查詢所有的課程類型與階段 (例如:一般, 工作坊, 完整階段)",
         parameters: { type: "OBJECT", properties: {} }
+      },
+      {
+        name: "getCourseList",
+        description: "第二步：根據使用者選擇的課程類型，讀取該分類下的課程清單",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            category: { type: "STRING", description: "課程類型" }
+          },
+          required: ["category"]
+        }
       },
       {
         name: "createOrder",
@@ -35,8 +46,7 @@ export async function handleAIRequest(event, env) {
     contents: [{ role: "user", parts: [{ text: userMessage }] }],
     tools: tools,
     systemInstruction: {
-      // 加上強制指令，阻止 AI 閒聊，要求立即讀取清單
-      parts: [{ text: "你是專業的課程預約客服。當使用者提到想上課、想看課程或要求列出時，請『必須』立刻呼叫 getCourseList function 來獲取清單，絕對不要用反問的方式。回覆請俐落。" }]
+      parts: [{ text: "你是專業的課程預約客服。當使用者提到想上課或查詢課程時，必須先呼叫 getCourseCategories 列出課程類型。當使用者指定了類型後，再呼叫 getCourseList 取得該分類的課程。不要用反問的方式閒聊，直接呼叫功能即可。" }]
     }
   };
 
@@ -51,7 +61,6 @@ export async function handleAIRequest(event, env) {
     });
 
     if (!geminiRes.ok) {
-       console.error("Gemini API Error:", await geminiRes.text());
        return await replyToLINE(event.replyToken, "系統連線異常，請稍後再試。", null, env);
     }
 
@@ -63,13 +72,21 @@ export async function handleAIRequest(event, env) {
         const fnName = part.functionCall.name;
         const args = part.functionCall.args;
 
-        if (fnName === 'getCourseList') {
-          const courses = await getCourseList(env);
+        if (fnName === 'getCourseCategories') {
+          const categories = await getCourseCategories(env);
+          if (categories && categories.length > 0) {
+            aiResponseText = "請選擇您想了解的課程類型：";
+            flexMessage = generateCategoryFlexMessage(categories);
+          } else {
+            aiResponseText = "目前沒有設定課程類型，請稍後再試。";
+          }
+        } else if (fnName === 'getCourseList') {
+          const courses = await getCourseList(args.category, env);
           if (courses && courses.length > 0) {
-            aiResponseText = "為您列出目前的課程：";
+            aiResponseText = `為您列出「${args.category}」的課程：`;
             flexMessage = generateCourseFlexMessage(courses);
           } else {
-            aiResponseText = "目前沒有可報名的課程或系統整理中，請稍後再試。";
+            aiResponseText = `目前「${args.category}」分類下沒有課程喔。`;
           }
         } else if (fnName === 'createOrder') {
           await createOrder(args.lineUid || userId, args.courseId, args.amount, env);
@@ -81,7 +98,6 @@ export async function handleAIRequest(event, env) {
       }
     }
 
-    // 防錯機制
     if (!aiResponseText && !flexMessage) {
       aiResponseText = "處理您的請求時發生狀況，請稍後再試。";
     }
@@ -98,21 +114,12 @@ async function replyToLINE(replyToken, text, flexMessage, env) {
   if (text) messages.push({ type: 'text', text: text });
   if (flexMessage) messages.push(flexMessage);
 
-  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+  await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`
     },
-    body: JSON.stringify({
-      replyToken: replyToken,
-      messages: messages
-    })
+    body: JSON.stringify({ replyToken, messages })
   });
-
-  // 如果發送 Flex 失敗，將錯誤印出以利除錯
-  if (!res.ok) {
-    console.error("LINE API 發送失敗:", await res.text());
-    console.error("發送的 Payload:", JSON.stringify(messages));
-  }
 }
