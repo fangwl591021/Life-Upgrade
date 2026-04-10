@@ -1,8 +1,7 @@
-// 產生第一層：課程分類選項 Flex Message (修正 cornerRadius 錯誤版本)
+// 產生第一層：課程分類選項 Flex Message (帶圖片與圓角按鈕版)
 export function generateCategoryFlexMessage(categories) {
   if (!categories || categories.length === 0) return null;
 
-  // 使用 box 模擬圓角按鈕，避免直接在 button 使用無效欄位
   const categoryBoxes = categories.map(category => ({
     type: "box",
     layout: "vertical",
@@ -66,7 +65,7 @@ export function generateCategoryFlexMessage(categories) {
   };
 }
 
-// 產生第二層：實際課程細項 Flex Message (雙按鈕版)
+// 產生第二層：課程清單 (復刻旅遊行程卡片樣式)
 export function generateCourseFlexMessage(courses) {
   if (!courses || courses.length === 0) return null;
 
@@ -74,57 +73,103 @@ export function generateCourseFlexMessage(courses) {
     let img = "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
     if (course.imageUrl && course.imageUrl.startsWith("http")) img = course.imageUrl;
 
-    const detailAction = (course.liffUrl && course.liffUrl.startsWith("http")) 
-      ? { type: "uri", label: "課程說明", uri: course.liffUrl }
-      : { type: "message", label: "課程說明", text: `${course.name} 暫無線上說明。` };
+    // 使用你提供的 LIFF URL 並夾帶課程 ID
+    const liffBaseUrl = "https://liff.line.me/2009130603-ktCTGk6d";
+    const detailUri = `${liffBaseUrl}?id=${course.id}`;
 
     return {
       type: "bubble",
-      size: "kilo",
+      size: "mega",
       body: {
         type: "box",
         layout: "vertical",
         paddingAll: "0px",
         contents: [
-          { type: "image", url: img, size: "full", aspectRatio: "20:13" },
-          { type: "text", text: course.name, weight: "bold", size: "sm", align: "center", margin: "md" },
-          { 
-            type: "text", 
-            text: course.description || `價格: ${course.price}`, 
-            wrap: true, 
-            margin: "md", 
-            size: "xs", 
-            offsetStart: "5px",
-            color: "#666666"
+          {
+            type: "image",
+            url: img,
+            size: "full",
+            aspectRatio: "20:13",
+            aspectMode: "cover"
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "lg",
+            spacing: "sm",
+            contents: [
+              {
+                type: "text",
+                text: course.name,
+                weight: "bold",
+                size: "xl",
+                wrap: true
+              },
+              {
+                type: "text",
+                text: course.description || "暫無簡介",
+                size: "sm",
+                color: "#666666",
+                wrap: true,
+                maxLines: 5 
+              },
+              {
+                type: "text",
+                text: `NT $${course.price}起`,
+                color: "#FF0000", 
+                align: "end",
+                weight: "bold",
+                size: "lg",
+                margin: "md"
+              }
+            ]
           }
         ]
       },
       footer: {
         type: "box",
-        layout: "horizontal",
+        layout: "vertical",
         spacing: "sm",
-        paddingAll: "sm",
         contents: [
-          { 
-            type: "button", 
-            action: detailAction, 
-            style: "secondary",
-            height: "sm" 
-          },
-          { 
-            type: "button", 
-            action: { 
-              type: "message", 
-              label: "我要報名", 
-              text: `我想預約 ${course.name} (編號:${course.id}, 金額:${course.price})` 
-            }, 
-            style: "primary", 
-            height: "sm" 
+          { type: "separator" },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              {
+                type: "button",
+                action: {
+                  type: "uri",
+                  label: "課程說明 >",
+                  uri: detailUri
+                },
+                style: "link",
+                height: "sm"
+              },
+              {
+                type: "button",
+                action: {
+                  type: "message",
+                  label: "我要報名",
+                  text: `我想預約 ${course.name} (編號:${course.id}, 金額:${course.price})`
+                },
+                style: "primary",
+                height: "sm",
+                color: "#007AFF"
+              }
+            ]
           }
         ]
       }
     };
   });
 
-  return { type: "flex", altText: "課程清單", contents: { type: "carousel", contents: bubbles } };
+  return {
+    type: "flex",
+    altText: "為您挑選的課程清單",
+    contents: {
+      type: "carousel",
+      contents: bubbles
+    }
+  };
 }
