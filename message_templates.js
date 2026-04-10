@@ -1,71 +1,84 @@
-// 產生第一層：課程分類選項 Flex Message (帶圖片與圓角按鈕版)
+// 產生第一層：課程分類輪播卡片 (每一類都有專屬大圖)
 export function generateCategoryFlexMessage(categories) {
   if (!categories || categories.length === 0) return null;
 
-  const categoryBoxes = categories.map(category => ({
-    type: "box",
-    layout: "vertical",
-    contents: [
-      {
-        type: "text",
-        text: `✓  ${category}`,
-        align: "center",
-        color: "#333333",
-        size: "sm"
-      }
-    ],
-    backgroundColor: "#F0F0F0",
-    cornerRadius: "md",
-    paddingAll: "md",
-    margin: "md",
-    action: {
-      type: "message",
-      label: category,
-      text: `我想查詢 ${category} 的課程`
-    }
-  }));
+  // 定義分類與圖片的對應關係
+  const categoryImages = {
+    "蛻變階段": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/b8721597914eb3e6352ad3c30e68b153.jpg",
+    "完整階段": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/dd11e3a570c5fccccc5fee72f639cfda.jpg",
+    "一般": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/25b2916b5c49db617f52fa5ea48efee7.jpg",
+    "工作坊": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c4ca4238a0b923820dcc509a6f75849b.png"
+  };
 
-  return {
-    type: "flex",
-    altText: "請選擇課程類型",
-    contents: {
+  const bubbles = categories.map(category => {
+    // 取得對應圖片，若沒對應到則使用預設圖
+    const imageUrl = categoryImages[category] || "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png";
+
+    return {
       type: "bubble",
       size: "kilo",
-      header: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          {
-            type: "image",
-            url: "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png",
-            size: "full",
-            aspectRatio: "20:13",
-            aspectMode: "cover"
-          }
-        ],
-        paddingAll: "0px"
-      },
       body: {
         type: "box",
         layout: "vertical",
-        paddingAll: "lg",
+        paddingAll: "0px",
         contents: [
           {
-            type: "text",
-            text: "請選擇階段 / 類型",
-            weight: "bold",
-            size: "sm",
-            color: "#666666",
-            align: "center"
+            type: "image",
+            url: imageUrl,
+            size: "full",
+            aspectRatio: "20:13",
+            aspectMode: "cover"
           },
-          ...categoryBoxes
+          {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "lg",
+            spacing: "sm",
+            contents: [
+              {
+                type: "text",
+                text: category,
+                weight: "bold",
+                size: "md",
+                align: "center",
+                color: "#333333"
+              }
+            ]
+          }
+        ]
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "sm",
+        contents: [
+          {
+            type: "button",
+            action: {
+              type: "message",
+              label: "查看課程",
+              text: `我想查詢 ${category} 的課程`
+            },
+            style: "primary",
+            height: "sm",
+            color: "#007AFF"
+          }
         ]
       }
+    };
+  });
+
+  return {
+    type: "flex",
+    altText: "請選擇感興趣的課程類型",
+    contents: {
+      type: "carousel",
+      contents: bubbles
     }
   };
 }
 
-// 產生第二層：課程清單 (復刻旅遊行程卡片樣式)
+// 產生第二層：課程清單 (旅遊行程卡片樣式)
 export function generateCourseFlexMessage(courses) {
   if (!courses || courses.length === 0) return null;
 
@@ -73,7 +86,6 @@ export function generateCourseFlexMessage(courses) {
     let img = "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
     if (course.imageUrl && course.imageUrl.startsWith("http")) img = course.imageUrl;
 
-    // 使用你提供的 LIFF URL 並夾帶課程 ID
     const liffBaseUrl = "https://liff.line.me/2009130603-ktCTGk6d";
     const detailUri = `${liffBaseUrl}?id=${course.id}`;
 
