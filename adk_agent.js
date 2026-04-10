@@ -1,4 +1,4 @@
-import { getCourseCategories, getCourseList, updateCustomerProfile, createOrder } from './google_sheets_handler.js';
+import { getCourseCategories, getCourseList, createOrder } from './google_sheets_handler.js';
 import { sendTelegramMessage } from './telegram_notifier.js';
 import { generateCategoryFlexMessage, generateCourseFlexMessage } from './message_templates.js';
 
@@ -7,29 +7,29 @@ const tools = [
     functionDeclarations: [
       {
         name: "getCourseCategories",
-        description: "第一步：查詢所有的課程類型與階段 (例如:一般, 工作坊, 完整階段)",
+        description: "查詢所有的課程分類、階段或類型清單",
         parameters: { type: "OBJECT", properties: {} }
       },
       {
         name: "getCourseList",
-        description: "第二步：根據使用者選擇的課程類型，讀取該分類下的課程清單",
+        description: "根據特定的分類名稱讀取課程詳細清單",
         parameters: {
           type: "OBJECT",
           properties: {
-            category: { type: "STRING", description: "課程類型" }
+            category: { type: "STRING", description: "課程分類名稱" }
           },
           required: ["category"]
         }
       },
       {
         name: "createOrder",
-        description: "在購買紀錄表中寫入新資料",
+        description: "在 Orders 表中寫入預約報名紀錄",
         parameters: {
           type: "OBJECT",
           properties: {
-            lineUid: { type: "STRING", description: "客戶的 LINE UID" },
+            lineUid: { type: "STRING", description: "LINE UID" },
             courseId: { type: "STRING", description: "課程 ID" },
-            amount: { type: "NUMBER", description: "購買金額" }
+            amount: { type: "NUMBER", description: "金額" }
           },
           required: ["lineUid", "courseId", "amount"]
         }
@@ -46,7 +46,7 @@ export async function handleAIRequest(event, env) {
     contents: [{ role: "user", parts: [{ text: userMessage }] }],
     tools: tools,
     systemInstruction: {
-      parts: [{ text: "你是專業的課程預約客服。當使用者提到想上課或查詢課程時，必須先呼叫 getCourseCategories 列出課程類型。當使用者指定了類型後，再呼叫 getCourseList 取得該分類的課程。不要用反問的方式閒聊，直接呼叫功能即可。" }]
+      parts: [{ text: "你是課程客服。當用戶想看課程，先呼叫 getCourseCategories 列出階段分類。用戶選定階段後，再呼叫 getCourseList 顯示該類的課程卡片。禁止反問，直接執行 Tool。" }]
     }
   };
 
@@ -54,6 +54,7 @@ export async function handleAIRequest(event, env) {
     let aiResponseText = '';
     let flexMessage = null;
 
+    // 呼叫 Gemini
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,7 +62,9 @@ export async function handleAIRequest(event, env) {
     });
 
     if (!geminiRes.ok) {
-       return await replyToLINE(event.replyToken, "系統連線異常，請稍後再試。", null, env);
+      const errorDetail = await geminiRes.text();
+      await sendTelegramMessage(`❌ Gemini API 失敗: ${errorDetail}`, env);
+      return await replyToLINE(event.replyToken, "系統 AI 連線失敗，請檢查 API Key。", null, env);
     }
 
     const data = await geminiRes.json();
@@ -74,38 +77,36 @@ export async function handleAIRequest(event, env) {
 
         if (fnName === 'getCourseCategories') {
           const categories = await getCourseCategories(env);
-          if (categories && categories.length > 0) {
-            aiResponseText = "請選擇您想了解的課程類型：";
+          if (categories.length > 0) {
+            aiResponseText = "請選擇您感興趣的課程類型：";
             flexMessage = generateCategoryFlexMessage(categories);
           } else {
-            aiResponseText = "目前沒有設定課程類型，請稍後再試。";
+            aiResponseText = "暫時查不到課程分類，請確認試算表設定。";
+            await sendTelegramMessage("⚠️ 課程分類讀取結果為空，請檢查 Google Sheets 或 GAS。", env);
           }
         } else if (fnName === 'getCourseList') {
           const courses = await getCourseList(args.category, env);
-          if (courses && courses.length > 0) {
-            aiResponseText = `為您列出「${args.category}」的課程：`;
+          if (courses.length > 0) {
+            aiResponseText = `以下是「${args.category}」的課程細項：`;
             flexMessage = generateCourseFlexMessage(courses);
           } else {
-            aiResponseText = `目前「${args.category}」分類下沒有課程喔。`;
+            aiResponseText = `目前「${args.category}」分類下沒有開放中的課程。`;
           }
         } else if (fnName === 'createOrder') {
-          await createOrder(args.lineUid || userId, args.courseId, args.amount, env);
-          aiResponseText = `已為您完成預約紀錄！課程ID：${args.courseId}。`;
-          await sendTelegramMessage(`新訂單建立！\n客戶：${userId}\n課程：${args.courseId}\n金額：${args.amount}`, env);
+          await createOrder(userId, args.courseId, args.amount, env);
+          aiResponseText = "已為您完成預約！";
+          await sendTelegramMessage(`✅ 新預約：${userId}\n課程：${args.courseId}`, env);
         }
       } else if (part.text) {
         aiResponseText += part.text;
       }
     }
 
-    if (!aiResponseText && !flexMessage) {
-      aiResponseText = "處理您的請求時發生狀況，請稍後再試。";
-    }
-
     await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
 
   } catch (error) {
-    console.error('Agent Logic Error:', error);
+    await sendTelegramMessage(`❌ 執行緒錯誤: ${error.message}`, env);
+    await replyToLINE(event.replyToken, "抱歉，處理過程中發生技術錯誤。", null, env);
   }
 }
 
@@ -114,7 +115,7 @@ async function replyToLINE(replyToken, text, flexMessage, env) {
   if (text) messages.push({ type: 'text', text: text });
   if (flexMessage) messages.push(flexMessage);
 
-  await fetch('https://api.line.me/v2/bot/message/reply', {
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -122,4 +123,9 @@ async function replyToLINE(replyToken, text, flexMessage, env) {
     },
     body: JSON.stringify({ replyToken, messages })
   });
+  
+  if (!res.ok) {
+    const err = await res.text();
+    await sendTelegramMessage(`❌ LINE 回覆失敗: ${err}`, env);
+  }
 }
