@@ -8,7 +8,7 @@ const tools = [
     type: "function",
     function: {
       name: "getCourseCategories",
-      description: "查詢所有的課程分類、階段或類型清單",
+      description: "查詢所有的課程分類、階段或類型清單。用於用戶尚未指定任何類型時。",
       parameters: { type: "object", properties: {} }
     }
   },
@@ -16,7 +16,7 @@ const tools = [
     type: "function",
     function: {
       name: "getCourseList",
-      description: "根據特定的分類名稱讀取課程詳細清單",
+      description: "根據特定的分類名稱讀取課程詳細清單。當用戶指定了某個階段或類型時呼叫。",
       parameters: {
         type: "object",
         properties: {
@@ -65,15 +65,16 @@ export async function handleAIRequest(event, env) {
   const userId = event.source.userId;
 
   const requestBody = {
-    model: "gpt-4o", // 使用最先進的 gpt-4o 模型
+    model: "gpt-4o",
     messages: [
       {
         role: "system",
-        content: `你是課程客服。
-1. 當用戶想看課程，請立刻呼叫 getCourseCategories 顯示分類選項。
-2. 當用戶選定分類，請立刻呼叫 getCourseList 顯示課程卡片。
-3. 重要：若用戶訊息包含「我想預約 [課程名] (編號:[ID], 金額:[價])」，這是用戶點擊了報名按鈕。請『禁止閒聊』，直接呼叫 createOrder 並傳入正確的 ID 與金額。
-4. 成功後回覆：『已為您完成預約！後續將由專人與您聯繫。』回覆風格需簡潔，模擬 LINE 原生客服感。`
+        content: `你是專業課程客服。請嚴格遵守以下對話邏輯：
+1. 如果用戶的訊息包含明確的類別名稱（例如：工作坊、一般、蛻變階段、完整階段），請『優先』呼叫 getCourseList 並傳入該類別。
+2. 如果用戶只是含糊地說想看課程、看清單，且『未提及』任何具體類別，請呼叫 getCourseCategories 顯示分類選單。
+3. 如果用戶點擊報名按鈕（訊息含編號與金額），請直接呼叫 createOrder。
+4. 預約後回覆：『已為您完成預約！後續將由專人與您聯繫。』
+5. 嚴禁在已經知道類別的情況下又跳回第一步顯示選單。`
       },
       { role: "user", content: userMessage }
     ],
@@ -125,12 +126,12 @@ export async function handleAIRequest(event, env) {
             aiResponseText = `以下是「${args.category}」的課程細項：`;
             flexMessage = generateCourseFlexMessage(courses);
           } else {
-            aiResponseText = `目前該分類下沒有開放中的課程。`;
+            aiResponseText = `目前「${args.category}」分類下沒有開放中的課程。`;
           }
         } else if (fnName === 'createOrder') {
           await createOrder(userId, args.courseId, args.amount, env);
           aiResponseText = "已為您完成預約！後續將由專人與您聯繫。";
-          await sendTelegramMessage(`✅ 新預約報名！\n使用者：${userId}\n課程：${args.courseId}\n金額：${args.amount}`, env);
+          await sendTelegramMessage(`✅ 新預約報名！\n使用者：${userId}\n課程ID：${args.courseId}`, env);
         }
       }
     } else {
