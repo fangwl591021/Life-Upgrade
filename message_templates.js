@@ -1,18 +1,20 @@
-// 產生第一層：課程分類選項 Flex Message
+// 產生第一層：課程分類選項 Flex Message (帶圖片與圓角按鈕版)
 export function generateCategoryFlexMessage(categories) {
   if (!categories || categories.length === 0) return null;
 
+  // 建立分類按鈕陣列
   const buttons = categories.map(category => ({
     type: "button",
     action: {
       type: "message",
-      label: `✓  ${category}`, // 加上你截圖中的勾勾圖示
-      text: `我想查詢 ${category} 的課程` // 隱藏指令
+      label: category,
+      text: `我想查詢 ${category} 的課程`
     },
+    style: "secondary", // 使用次要按鈕樣式，視覺較柔和
     height: "sm",
-    style: "link", // 使用純文字連結，無框線，貼近原生感
-    color: "#333333",
-    margin: "xs"
+    margin: "md",
+    color: "#F0F0F0", // 淺灰色底
+    cornerRadius: "md" // 圓角設定
   }));
 
   return {
@@ -20,7 +22,21 @@ export function generateCategoryFlexMessage(categories) {
     altText: "請選擇課程類型",
     contents: {
       type: "bubble",
-      size: "kilo", // 保持窄版不佔版面
+      size: "kilo", // 保持窄版，視覺較精緻
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "image",
+            url: "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png",
+            size: "full",
+            aspectRatio: "20:13",
+            aspectMode: "cover"
+          }
+        ],
+        paddingAll: "0px"
+      },
       body: {
         type: "box",
         layout: "vertical",
@@ -32,28 +48,32 @@ export function generateCategoryFlexMessage(categories) {
             weight: "bold",
             size: "sm",
             color: "#666666",
-            align: "center"
+            align: "center",
+            margin: "none"
           },
           {
-            type: "separator",
-            margin: "md"
-          },
-          ...buttons
+            type: "box",
+            layout: "vertical",
+            margin: "lg",
+            contents: buttons
+          }
         ]
       }
     }
   };
 }
 
-// 產生第二層：實際課程細項 Flex Message (維持上一版的極簡設定)
+// 產生第二層：實際課程細項 Flex Message (維持雙按鈕極簡設定)
 export function generateCourseFlexMessage(courses) {
   if (!courses || courses.length === 0) return null;
 
   const bubbles = courses.slice(0, 10).map(course => {
-    let validImageUrl = "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
-    if (course.imageUrl && course.imageUrl.toString().startsWith("https://")) {
-      validImageUrl = course.imageUrl;
-    }
+    let img = "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
+    if (course.imageUrl && course.imageUrl.startsWith("http")) img = course.imageUrl;
+
+    const detailAction = (course.liffUrl && course.liffUrl.startsWith("http")) 
+      ? { type: "uri", label: "課程說明", uri: course.liffUrl }
+      : { type: "message", label: "課程說明", text: `${course.name} 暫無線上說明。` };
 
     return {
       type: "bubble",
@@ -61,56 +81,47 @@ export function generateCourseFlexMessage(courses) {
       body: {
         type: "box",
         layout: "vertical",
+        paddingAll: "0px",
         contents: [
-          {
-            type: "image",
-            url: validImageUrl,
-            size: "full",
-            aspectRatio: "20:13"
-          },
-          {
-            type: "text",
-            text: course.name || "未命名課程",
-            weight: "bold",
-            size: "sm",
-            wrap: true,
-            align: "center"
-          },
-          {
-            type: "text",
-            text: course.description || `價格: NT$ ${course.price}`,
-            wrap: true,
-            offsetStart: "5px"
+          { type: "image", url: img, size: "full", aspectRatio: "20:13" },
+          { type: "text", text: course.name, weight: "bold", size: "sm", align: "center", margin: "md" },
+          { 
+            type: "text", 
+            text: course.description || `價格: ${course.price}`, 
+            wrap: true, 
+            margin: "md", 
+            size: "xs", 
+            offsetStart: "5px",
+            color: "#666666"
           }
-        ],
-        spacing: "sm",
-        paddingAll: "0px"
+        ]
       },
       footer: {
         type: "box",
-        layout: "vertical",
+        layout: "horizontal",
+        spacing: "sm",
+        paddingAll: "sm",
         contents: [
-          {
-            type: "button",
-            action: {
-              type: "message",
-              label: "我要報名",
-              text: `我想預約 ${course.name}`
-            },
-            height: "sm",
-            style: "primary"
+          { 
+            type: "button", 
+            action: detailAction, 
+            style: "secondary",
+            height: "sm" 
+          },
+          { 
+            type: "button", 
+            action: { 
+              type: "message", 
+              label: "我要報名", 
+              text: `我想預約 ${course.name} (編號:${course.id}, 金額:${course.price})` 
+            }, 
+            style: "primary", 
+            height: "sm" 
           }
         ]
       }
     };
   });
 
-  return {
-    type: "flex",
-    altText: "課程清單已送達，請於手機查看",
-    contents: {
-      type: "carousel",
-      contents: bubbles
-    }
-  };
+  return { type: "flex", altText: "課程清單", contents: { type: "carousel", contents: bubbles } };
 }
