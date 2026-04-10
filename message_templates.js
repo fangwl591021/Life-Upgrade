@@ -1,20 +1,29 @@
-// 產生第一層：課程分類選項 Flex Message (帶圖片與圓角按鈕版)
+// 產生第一層：課程分類選項 Flex Message (修正 cornerRadius 錯誤版本)
 export function generateCategoryFlexMessage(categories) {
   if (!categories || categories.length === 0) return null;
 
-  // 建立分類按鈕陣列
-  const buttons = categories.map(category => ({
-    type: "button",
+  // 使用 box 模擬圓角按鈕，避免直接在 button 使用無效欄位
+  const categoryBoxes = categories.map(category => ({
+    type: "box",
+    layout: "vertical",
+    contents: [
+      {
+        type: "text",
+        text: `✓  ${category}`,
+        align: "center",
+        color: "#333333",
+        size: "sm"
+      }
+    ],
+    backgroundColor: "#F0F0F0",
+    cornerRadius: "md",
+    paddingAll: "md",
+    margin: "md",
     action: {
       type: "message",
       label: category,
       text: `我想查詢 ${category} 的課程`
-    },
-    style: "secondary", // 使用次要按鈕樣式，視覺較柔和
-    height: "sm",
-    margin: "md",
-    color: "#F0F0F0", // 淺灰色底
-    cornerRadius: "md" // 圓角設定
+    }
   }));
 
   return {
@@ -22,7 +31,7 @@ export function generateCategoryFlexMessage(categories) {
     altText: "請選擇課程類型",
     contents: {
       type: "bubble",
-      size: "kilo", // 保持窄版，視覺較精緻
+      size: "kilo",
       header: {
         type: "box",
         layout: "vertical",
@@ -48,22 +57,16 @@ export function generateCategoryFlexMessage(categories) {
             weight: "bold",
             size: "sm",
             color: "#666666",
-            align: "center",
-            margin: "none"
+            align: "center"
           },
-          {
-            type: "box",
-            layout: "vertical",
-            margin: "lg",
-            contents: buttons
-          }
+          ...categoryBoxes
         ]
       }
     }
   };
 }
 
-// 產生第二層：實際課程細項 Flex Message (維持雙按鈕極簡設定)
+// 產生第二層：實際課程細項 Flex Message (雙按鈕版)
 export function generateCourseFlexMessage(courses) {
   if (!courses || courses.length === 0) return null;
 
