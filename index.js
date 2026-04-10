@@ -5,7 +5,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 處理 LIFF 課程說明網頁的 GET 請求
+    // GET 請求處理：開啟 LIFF 說明頁面
     if (request.method === 'GET') {
       return handleLiffDescription(url, env);
     }
@@ -26,8 +26,8 @@ export default {
         if (event.type === 'message' && event.message.type === 'text') {
           const text = event.message.text.trim();
           
-          // 擴充攔截關鍵字，確保「報名」、「紀錄」不會跑去 WP
-          const aiKeywords = ['預約', '上課', '課程', '階段', '工作坊', '清單', '編號:', '哪些', '報名', '紀錄', '查'];
+          // 精確攔截關鍵字：只要包含這些關鍵字，就強制 AI 處理，不轉發 WP
+          const aiKeywords = ['預約', '上課', '課程', '階段', '工作坊', '清單', '編號:', '哪些', '報名', '紀錄', '查', '訂單'];
           const isAIIntent = aiKeywords.some(keyword => text.includes(keyword));
 
           if (isAIIntent) {
