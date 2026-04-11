@@ -57,13 +57,16 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // --- 4. 課程首頁 (已加入你的 TG 測試推播) ---
+  // --- 4. 課程首頁 ---
   if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     
-    // 【強制測試】只要點擊查看課程，就立刻發送 Telegram 通知
     const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
     await sendTelegramMessage(`🔔 TG推播測試成功\n__________________\n\n有人在 LINE 點擊了「${userMessage}」\n時間 : ${now}`, env);
+
+    if (!cats || cats.length === 0) {
+      return await replyToLINE(event.replyToken, "⚠️ 系統無法讀取課程清單，請確認 GAS 權限是否設為「所有人」。", null, env);
+    }
 
     return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
   }
