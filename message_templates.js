@@ -70,7 +70,7 @@ export function generateCategoryFlexMessage(categories) {
       }
     };
   });
-  return { type: "flex", altText: "請選擇感興趣的課程類型", contents: { type: "carousel", contents: bubbles } };
+  return { type: "flex", altText: "請選擇課程類型", contents: { type: "carousel", contents: bubbles } };
 }
 
 export function generateCourseFlexMessage(courses) {
