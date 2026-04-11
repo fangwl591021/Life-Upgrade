@@ -1,15 +1,22 @@
 export async function sendTelegramMessage(text, env) {
-  const botToken = "8744985479:AAGFfK4ze6awhdkWDpKcTSHKO6Ys_uBxPfo";
-  const chatId = "-5283526670";
+  // 將 Token 與 Chat ID 設為絕對保底，防止環境變數讀取失敗
+  const botToken = (env && env.TELEGRAM_BOT_TOKEN) ? env.TELEGRAM_BOT_TOKEN : "8744985479:AAGFfK4ze6awhdkWDpKcTSHKO6Ys_uBxPfo";
+  const chatId = (env && env.TELEGRAM_CHAT_ID) ? env.TELEGRAM_CHAT_ID : "-5283526670";
+
+  if (!botToken || !chatId) return;
+
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   
   try {
     await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: text })
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text
+      })
     });
   } catch (error) {
-    console.error("TG Error:", error);
+    console.error("Telegram notification failed:", error);
   }
 }
