@@ -12,8 +12,8 @@ export async function handleAIRequest(event, env) {
     try {
       await createOrder(userId, courseId, amount, env);
       const orders = await getUserOrders(userId, env);
-      return await replyToLINE(event.replyToken, `感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳`, generateOrderListFlexMessage(orders), env);
-    } catch (e) { return await replyToLINE(event.replyToken, "系統忙碌中。", null, env); }
+      return await replyToLINE(event.replyToken, '感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳', generateOrderListFlexMessage(orders), env);
+    } catch (e) { return await replyToLINE(event.replyToken, '系統忙碌中。', null, env); }
   }
 
   const cancelMatch = userMessage.match(/我想取消報名\s*\(單號\s*[:：]\s*(.+?)\)/);
@@ -21,28 +21,28 @@ export async function handleAIRequest(event, env) {
     const orderId = cancelMatch[1].trim();
     try {
       await fetch(env.APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })});
-      return await replyToLINE(event.replyToken, `已成功取消預約。`, null, env);
-    } catch (e) { return await replyToLINE(event.replyToken, "取消失敗。", null, env); }
+      return await replyToLINE(event.replyToken, '已成功取消預約。', null, env);
+    } catch (e) { return await replyToLINE(event.replyToken, '取消失敗。', null, env); }
   }
 
   if (userMessage.includes('我的預約') || userMessage.includes('我的報名')) {
     const orders = await getUserOrders(userId, env);
-    if (orders && orders.length > 0) return await replyToLINE(event.replyToken, "這是您的報名紀錄：", generateOrderListFlexMessage(orders), env);
-    return await replyToLINE(event.replyToken, "目前查無紀錄。", null, env);
+    if (orders && orders.length > 0) return await replyToLINE(event.replyToken, '這是您的報名紀錄：', generateOrderListFlexMessage(orders), env);
+    return await replyToLINE(event.replyToken, '目前查無紀錄。', null, env);
   }
 
   if (userMessage === '我想看課程') {
     const cats = await getCourseCategories(env);
-    if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, "目前暫無課程。", null, env);
-    return await replyToLINE(event.replyToken, "請選擇課程類型：", generateCategoryFlexMessage(cats), env);
+    if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, '目前暫無課程。', null, env);
+    return await replyToLINE(event.replyToken, '請選擇課程類型：', generateCategoryFlexMessage(cats), env);
   }
 
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const catName = categoryMatch[1].trim();
     const courses = await getCourseList(catName, env);
-    if (courses && courses.length > 0) return await replyToLINE(event.replyToken, `以下是「${catName}」的課程細項：`, generateCourseFlexMessage(courses), env);
-    return await replyToLINE(event.replyToken, `抱歉，找不到課程。`, null, env);
+    if (courses && courses.length > 0) return await replyToLINE(event.replyToken, '以下是「' + catName + '」的課程細項：', generateCourseFlexMessage(courses), env);
+    return await replyToLINE(event.replyToken, '抱歉，找不到課程。', null, env);
   }
 
   const requestBody = {
@@ -68,5 +68,5 @@ export async function handleAIRequest(event, env) {
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
   const messages = []; if (text) messages.push({ type: 'text', text }); if (flexMessage) messages.push(flexMessage);
-  await fetch('https://api.line.me/v2/bot/message/reply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` }, body: JSON.stringify({ replyToken, messages }) });
+  await fetch('https://api.line.me/v2/bot/message/reply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN }, body: JSON.stringify({ replyToken, messages }) });
 }
