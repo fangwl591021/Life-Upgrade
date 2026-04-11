@@ -50,7 +50,7 @@ export function generateCourseFlexMessage(courses) {
     footer: { type: "box", layout: "vertical", spacing: "md", contents: [
       { type: "separator" },
       { type: "box", layout: "horizontal", spacing: "md", contents: [
-        { type: "button", action: { type: "uri", label: "詳情", uri: "https://liff.me/2009130603-sXSzvlh2?id=" + course.id }, style: "link", height: "sm" },
+        { type: "button", action: { type: "uri", label: "詳情", uri: "https://lifeupgrade.fangwl591021.workers.dev/desc?id=" + course.id }, style: "link", height: "sm" },
         { type: "button", action: { type: "message", label: "預約報名", text: "我想預約 " + course.name + " (編號:" + course.id + ", 金額:" + course.price + ")" }, style: "primary", height: "md", color: "#007AFF" }
       ]}
     ]}
