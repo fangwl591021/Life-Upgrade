@@ -21,18 +21,21 @@ export async function handleAIRequest(event, env) {
     const orderId = cancelMatch[1].trim();
     try {
       await fetch(env.APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })});
-      return await replyToLINE(event.replyToken, `已成功取消訂單。`, null, env);
+      return await replyToLINE(event.replyToken, `已成功取消預約。`, null, env);
     } catch (e) { return await replyToLINE(event.replyToken, "取消失敗。", null, env); }
   }
 
   if (userMessage.includes('我的預約') || userMessage.includes('我的報名')) {
     const orders = await getUserOrders(userId, env);
     if (orders && orders.length > 0) return await replyToLINE(event.replyToken, "這是您的報名紀錄：", generateOrderListFlexMessage(orders), env);
-    return await replyToLINE(event.replyToken, "查無預約紀錄。", null, env);
+    return await replyToLINE(event.replyToken, "目前查無紀錄。", null, env);
   }
 
   if (userMessage === '我想看課程') {
     const cats = await getCourseCategories(env);
+    if (!cats || cats.length === 0) {
+      return await replyToLINE(event.replyToken, "⚠️ 無法讀取類別，請檢查 GAS 權限。", null, env);
+    }
     return await replyToLINE(event.replyToken, "請選擇課程類型：", generateCategoryFlexMessage(cats), env);
   }
 
@@ -42,7 +45,7 @@ export async function handleAIRequest(event, env) {
     if (courses && courses.length > 0) return await replyToLINE(event.replyToken, `課程細項如下：`, generateCourseFlexMessage(courses), env);
   }
 
-  const requestBody = { model: "gpt-4o", messages: [{ role: "system", content: "你是專業客服。不包框、不加粗。" }, { role: "user", content: userMessage }] };
+  const requestBody = { model: "gpt-4o", messages: [{ role: "system", content: "你是專業課程客服。不包框、不加粗。" }, { role: "user", content: userMessage }] };
   try {
     const gptRes = await fetch("https://api.openai.com/v1/chat/completions", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.OPENAI_API_KEY}` }, body: JSON.stringify(requestBody) });
     const data = await gptRes.json();
