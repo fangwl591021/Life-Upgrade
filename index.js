@@ -1,42 +1,68 @@
 import { handleAIRequest } from './adk_agent.js';
 import { forwardToWP } from './wp_proxy_handler.js';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type'
+};
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const workerUrl = url.origin;
+
+    if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
     if (request.method === 'GET') {
-      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env);
+      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env, workerUrl);
       return handleLiffDescription(url, env);
     }
 
-    if (request.method !== 'POST') return new Response('Running', { status: 200 });
+    if (request.method === 'POST') {
+      // Worker 僅作代理，轉發到 GAS 寫入，由 GAS 觸發通知
+      if (url.pathname === '/api/liff_submit') {
+        try {
+          const payload = await request.json();
+          const gasRes = await fetch(env.APPS_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'reportPayment', data: payload })
+          });
+          const gasResult = await gasRes.json();
+          return new Response(JSON.stringify(gasResult), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        } catch(e) {
+          return new Response(JSON.stringify({ status: 'error', message: '系統錯誤' }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        }
+      }
 
-    try {
-      const clonedRequest = request.clone();
-      const body = await request.json();
-      if (!body.events || body.events.length === 0) return new Response('OK');
+      // --- LINE Webhook 處理 ---
+      try {
+        const clonedRequest = request.clone();
+        const body = await request.json();
+        if (!body.events || body.events.length === 0) return new Response('OK');
 
-      for (const event of body.events) {
-        if (event.type === 'message' && event.message.type === 'text') {
-          const text = event.message.text.trim();
-          const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
-          if (aiKeywords.some(k => text.includes(k))) {
-            ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
-            ctx.waitUntil(handleAIRequest(event, env));
+        for (const event of body.events) {
+          if (event.type === 'message' && event.message.type === 'text') {
+            const text = event.message.text.trim();
+            const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
+            if (aiKeywords.some(k => text.includes(k))) {
+              ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
+              ctx.waitUntil(handleAIRequest(event, env));
+            } else {
+              ctx.waitUntil(forwardToWP(clonedRequest, env));
+            }
           } else {
             ctx.waitUntil(forwardToWP(clonedRequest, env));
           }
-        } else {
-          ctx.waitUntil(forwardToWP(clonedRequest, env));
         }
-      }
-      return new Response('OK');
-    } catch (e) { return new Response('OK'); }
+        return new Response('OK');
+      } catch (e) { return new Response('OK'); }
+    }
+    return new Response('Running', { status: 200 });
   }
 };
 
-async function handleLiffPayment(url, env) {
+async function handleLiffPayment(url, env, workerUrl) {
   const orderId = url.searchParams.get('orderId');
   const html = `
     <!DOCTYPE html>
@@ -77,6 +103,7 @@ async function handleLiffPayment(url, env) {
       <script>
         const oid = "${orderId}";
         const gas = "${env.APPS_SCRIPT_URL}";
+        const apiTarget = "${workerUrl}/api/liff_submit";
         let cname = "";
         let camount = 0;
 
@@ -88,11 +115,12 @@ async function handleLiffPayment(url, env) {
             fetch(gas + "?action=getUserProfile&lineUid=" + userId).then(r => r.json())
           ]);
           
+          // 【防呆機制】：只抓取未被取消的訂單
           const order = orderRes.data.find(o => o.orderId === oid);
           if (!order) {
-            document.getElementById('loading').innerText = '此單號不存在或已取消，無法回報匯款。';
+            document.getElementById('loading').innerText = '此單號已取消或不存在，無法回報匯款。';
             document.getElementById('loading').style.color = '#FF0000';
-            return;
+            return; // 終止，表單不會顯示
           }
 
           cname = order.courseName;
@@ -112,20 +140,16 @@ async function handleLiffPayment(url, env) {
           const btn = document.getElementById('subBtn');
           btn.disabled = true;
           try {
-            // [關鍵修復] 使用 text/plain 打給 GAS，100% 避開瀏覽器 CORS 阻擋
-            const res = await fetch(gas, { 
+            const res = await fetch(apiTarget, { 
               method: 'POST', 
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({
-                action: 'reportPayment',
-                data: { 
-                  orderId: oid, 
-                  name: document.getElementById('name').value, 
-                  phone: document.getElementById('phone').value, 
-                  last5: document.getElementById('last5').value,
-                  courseName: cname,
-                  amount: camount
-                }
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                orderId: oid, 
+                name: document.getElementById('name').value, 
+                phone: document.getElementById('phone').value, 
+                last5: document.getElementById('last5').value,
+                courseName: cname,
+                amount: camount
               })
             });
             const result = await res.json();
