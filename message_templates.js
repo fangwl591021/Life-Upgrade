@@ -30,8 +30,8 @@ export function generateCategoryFlexMessage(categories) {
   const categoryImages = {
     "蛻變階段": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/b8721597914eb3e6352ad3c30e68b153.jpg",
     "完整階段": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/dd11e3a570c5fccccc5fee72f639cfda.jpg",
-    "一般": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/25b2916b5c49db617f52fa5ea48efee7.jpg",
-    "工作坊": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c4ca4238a0b923820dcc509a6f75849b.png"
+    "一般課程": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/25b2916b5c49db617f52fa5ea48efee7.jpg",
+    "工作坊課程": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c4ca4238a0b923820dcc509a6f75849b.png"
   };
   const bubbles = categories.map(category => ({
     type: "bubble", size: "micro",
@@ -54,7 +54,8 @@ export function generateCourseFlexMessage(courses) {
       { type: "image", url: course.imageUrl || "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png", size: "full", aspectRatio: "20:13", aspectMode: "cover" },
       { type: "box", layout: "vertical", paddingAll: "lg", spacing: "sm", contents: [
         { type: "text", text: course.name, weight: "bold", size: "xl", color: "#000000", wrap: true },
-        { type: "text", text: (course.description || "").slice(0, 100) + "...", size: "md", color: "#000000", wrap: true },
+        // 優化重點：限制文字 5 行，自動縮減
+        { type: "text", text: course.description || "", size: "md", color: "#333333", wrap: true, maxLines: 5 },
         { type: "text", text: `NT $${course.price}起`, color: "#FF0000", weight: "bold", size: "xxl", align: "end", margin: "md" }
       ]}
     ]},
