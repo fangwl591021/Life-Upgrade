@@ -5,7 +5,7 @@ compatibility_date = "2024-04-10"
 [vars]
 WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
 # 請務必確認為最新部署的 GAS /exec 網址
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJRtwSpazyJ4MHA2fgRK51ZpN4RR3nSGcU5phjOGRWy5uDSO7ortfckCU9kDG3pp_l_g/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby6VtvBWRCKrRZeKBoNBXiiVWQL8h26jzjhzS9FTVHVnqxfDDGN6PlcmNAflmf4J96gwA/exec"
 # 帳號密碼設定
 ADMIN_USERNAME = "ADMIN"
 ADMIN_PASSWORD = "@1234"
