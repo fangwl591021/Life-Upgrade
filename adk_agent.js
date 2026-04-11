@@ -37,7 +37,7 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // --- 1. 超快速路徑 (Fast Path) - 匹配成功即停止，不進入 AI ---
+  // --- 1. 超快速路徑 (Fast Path) - 秒讀秒回 ---
   
   // A. 我的報名
   if (userMessage.includes('我的報名') || userMessage.includes('報名紀錄')) {
@@ -49,7 +49,7 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // B. 分類查詢
+  // B. 分類查詢 (修正正則表達式，確保精準攔截)
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const cat = categoryMatch[1].trim();
@@ -63,7 +63,6 @@ export async function handleAIRequest(event, env) {
         const flex = generateCourseFlexMessage(courses);
         return await replyToLINE(event.replyToken, `以下是「${cat}」的課程細項：`, flex, env);
       } else {
-        // [關鍵阻斷]：沒資料也要回覆，不要讓流程掉入 AI 鬼打牆
         return await replyToLINE(event.replyToken, `抱歉，目前「${cat}」分類下暫無開放課程。`, null, env);
       }
     } catch (e) {
@@ -82,7 +81,7 @@ export async function handleAIRequest(event, env) {
   const requestBody = {
     model: "gpt-4o",
     messages: [
-      { role: "system", content: "你是課程客服。禁止反問，直接執行。若用戶想看分類，呼叫工具。" },
+      { role: "system", content: "你是課程客服。禁止反問，直接執行工具。用戶選定分類就顯示課程卡片。" },
       { role: "user", content: userMessage }
     ],
     tools: tools,
