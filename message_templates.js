@@ -12,121 +12,35 @@ export function generateOrderListFlexMessage(orders) {
         layout: "vertical",
         spacing: "md",
         contents: [
-          {
-            type: "text",
-            text: "報名資訊確認",
-            weight: "bold",
-            size: "lg",
-            color: "#1DB446"
-          },
+          { type: "text", text: "報名資訊確認", weight: "bold", size: "lg", color: "#1DB446" },
           { type: "separator" },
           {
-            type: "box",
-            layout: "vertical",
-            spacing: "sm",
-            contents: [
-              {
-                type: "text",
-                text: order.courseName,
-                weight: "bold",
-                size: "lg", 
-                wrap: true,
-                color: "#000000"
-              },
-              {
-                type: "text",
-                text: `訂單編號: ${order.orderId}`,
-                size: "md",
-                color: "#000000"
-              },
-              {
-                type: "text",
-                text: `應付金額: NT$ ${order.amount}`,
-                size: "xl",
-                color: "#FF0000",
-                weight: "bold"
-              },
-              {
-                type: "text",
-                text: `目前狀態: ${order.status}`,
-                size: "lg",
-                weight: "bold",
-                color: "#000000"
-              }
+            type: "box", layout: "vertical", spacing: "sm", contents: [
+              { type: "text", text: order.courseName, weight: "bold", size: "lg", wrap: true, color: "#000000" },
+              { type: "text", text: `訂單編號: ${order.orderId}`, size: "md", color: "#000000" },
+              { type: "text", text: `應付金額: NT$ ${order.amount}`, size: "xl", color: "#FF0000", weight: "bold" },
+              { type: "text", text: `目前狀態: ${order.status}`, size: "lg", weight: "bold", color: "#000000" }
             ]
           },
           {
-            type: "box",
-            layout: "vertical",
-            backgroundColor: "#f0f0f0",
-            paddingAll: "lg",
-            cornerRadius: "md",
-            contents: [
-              {
-                type: "text",
-                text: "匯款帳戶：(822) 中國信託",
-                size: "md",
-                color: "#000000",
-                weight: "bold"
-              },
-              {
-                type: "text",
-                text: "帳號：123-45678-9012",
-                size: "md",
-                color: "#000000",
-                weight: "bold",
-                margin: "xs"
-              },
-              {
-                type: "text",
-                text: "匯款後請點擊下方按鈕回報",
-                size: "md",
-                color: "#000000",
-                margin: "sm"
-              }
+            type: "box", layout: "vertical", backgroundColor: "#f0f0f0", paddingAll: "lg", cornerRadius: "md", contents: [
+              { type: "text", text: "匯款帳戶：(822) 中國信託", size: "md", color: "#000000", weight: "bold" },
+              { type: "text", text: "帳號：123-45678-9012", size: "md", color: "#000000", weight: "bold", margin: "xs" },
+              { type: "text", text: "匯款後請點擊下方按鈕回報", size: "md", color: "#000000", margin: "sm" }
             ]
           }
         ]
       },
       footer: {
-        type: "box",
-        layout: "vertical",
-        spacing: "sm",
-        contents: [
-          {
-            type: "button",
-            action: {
-              type: "uri",
-              label: "回報匯款",
-              uri: liffPaymentUrl
-            },
-            style: "primary",
-            height: "md",
-            color: "#1DB446"
-          },
-          {
-            type: "button",
-            action: {
-              type: "message",
-              label: "取消報名",
-              text: `我想取消報名 (單號:${order.orderId})`
-            },
-            style: "secondary",
-            height: "md"
-          }
+        type: "box", layout: "vertical", spacing: "sm", contents: [
+          { type: "button", action: { type: "uri", label: "回報匯款", uri: liffPaymentUrl }, style: "primary", height: "md", color: "#1DB446" },
+          { type: "button", action: { type: "message", label: "取消報名", text: `我想取消報名 (單號:${order.orderId})` }, style: "secondary", height: "md" }
         ]
       }
     };
   });
 
-  return {
-    type: "flex",
-    altText: "您的報名預約紀錄",
-    contents: {
-      type: "carousel",
-      contents: bubbles
-    }
-  };
+  return { type: "flex", altText: "您的報名預約紀錄", contents: { type: "carousel", contents: bubbles } };
 }
 
 export function generateCategoryFlexMessage(categories) {
@@ -140,13 +54,9 @@ export function generateCategoryFlexMessage(categories) {
   const bubbles = categories.map(category => {
     const imageUrl = categoryImages[category] || "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png";
     return {
-      type: "bubble",
-      size: "micro",
+      type: "bubble", size: "micro",
       body: {
-        type: "box",
-        layout: "vertical",
-        paddingAll: "0px",
-        contents: [
+        type: "box", layout: "vertical", paddingAll: "0px", contents: [
           { type: "image", url: imageUrl, size: "full", aspectRatio: "20:13", aspectMode: "cover" },
           { type: "box", layout: "vertical", paddingAll: "sm", contents: [
             { type: "text", text: category, weight: "bold", size: "md", align: "center", color: "#000000" }
@@ -173,8 +83,7 @@ export function generateCourseFlexMessage(courses) {
     const liffBaseUrl = "https://liff.line.me/2009130603-ktCTGk6d";
     const detailUri = `${liffBaseUrl}?id=${course.id}`;
     return {
-      type: "bubble",
-      size: "mega",
+      type: "bubble", size: "mega",
       body: {
         type: "box", layout: "vertical", paddingAll: "0px", contents: [
           { type: "image", url: img, size: "full", aspectRatio: "20:13", aspectMode: "cover" },
