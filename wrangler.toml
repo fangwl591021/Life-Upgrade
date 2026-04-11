@@ -1,10 +1,20 @@
-name = "lifeupgrade"
-main = "index.js"
-compatibility_date = "2024-04-10"
+export async function sendTelegramMessage(text, env) {
+  const botToken = "8561025338:AAHEX9eFJl3hDqXCZORXJ-4SNuLIB8z89gs";
+  // 如果是全新群組，請將下方數字替換為你新查到的 Chat ID
+  const chatId = "-5283526670";
 
-[vars]
-# 這裡務必保留，部署時才不會刪除後台變數
-WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
-TELEGRAM_CHAT_ID = "-5283526670"
-TELEGRAM_BOT_TOKEN = "8744985479:AAGFfK4ze6awhdkWDpKcTSHKO6Ys_uBxPfo"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxOxsmPvTTMn1l6u-v6UCrF4TwDe3U1A_EyXzY2JF_yJYSDDUuBHqfJNeBoQMaBoHgubw/exec"
+  const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text
+      })
+    });
+  } catch (error) {
+    console.error("TG Error:", error);
+  }
+}
