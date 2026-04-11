@@ -1,6 +1,5 @@
 import { handleAIRequest } from './adk_agent.js';
 import { forwardToWP } from './wp_proxy_handler.js';
-import { sendTelegramMessage } from './telegram_notifier.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,29 +10,15 @@ const corsHeaders = {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const workerUrl = url.origin;
 
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
     if (request.method === 'GET') {
-      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env, workerUrl);
+      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env);
       return handleLiffDescription(url, env);
     }
 
     if (request.method === 'POST') {
-      if (url.pathname === '/api/notifyPayment') {
-        try {
-          const payload = await request.json();
-          const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-          const tgText = `✅ 匯款回報成功通知\n__________________\n\n🆔 訂單編號 : ${payload.orderId}\n👤 學員姓名 : ${payload.name}\n📞 聯絡電話 : ${payload.phone}\n📚 課程名稱 : ${payload.courseName || "未知"}\n🏪 店家帳號 : kelly\n💰 報名金額 : ${payload.amount || 0} 元\n🔢 帳號末五碼 : ${payload.last5}\n🗓️ 回報時間 : ${now}`;
-          
-          await sendTelegramMessage(tgText, env);
-          return new Response(JSON.stringify({ status: 'success' }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-        } catch(e) {
-          return new Response(JSON.stringify({ status: 'error' }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-        }
-      }
-
       try {
         const clonedRequest = request.clone();
         const body = await request.json();
@@ -60,7 +45,7 @@ export default {
   }
 };
 
-async function handleLiffPayment(url, env, workerUrl) {
+async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
   const html = `
     <!DOCTYPE html>
@@ -101,7 +86,6 @@ async function handleLiffPayment(url, env, workerUrl) {
       <script>
         const oid = "${orderId}";
         const gasUrl = "${env.APPS_SCRIPT_URL}";
-        const workerUrl = "${workerUrl}";
         let cname = "";
         let camount = 0;
 
@@ -144,6 +128,7 @@ async function handleLiffPayment(url, env, workerUrl) {
           };
 
           try {
+            // 直接呼叫 GAS 寫入，GAS 會自動發送 Telegram
             const gasRes = await fetch(gasUrl, { 
               method: 'POST', 
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -152,11 +137,6 @@ async function handleLiffPayment(url, env, workerUrl) {
             const gasResult = await gasRes.json();
             
             if (gasResult.status === 'success') { 
-              await fetch(workerUrl + '/api/notifyPayment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadData)
-              });
               alert('回報完成！期待與您見面。✨'); 
               liff.closeWindow(); 
             } else { 
@@ -204,7 +184,6 @@ async function handleLiffDescription(url, env) {
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
-          // 防呆：如果網址沒有帶 id 參數
           const courseId = "${cid}";
           if (!courseId || courseId === "null") {
             document.getElementById('loading').innerText = '未指定課程！\\n請從 LINE 選單點擊「課程說明」進入。';
