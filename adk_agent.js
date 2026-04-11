@@ -9,7 +9,7 @@ export async function handleAIRequest(event, env) {
   const geminiKey = env.GEMINI_API_KEY;
   const openaiKey = env.OPENAI_API_KEY;
 
-  // 1. 處理預約報名指令 (RegExp)
+  // 1. 處理預約報名指令 (RegExp 匹配格式)
   const orderMatch = userMessage.match(/我想預約\s*([\s\S]+?)\s*\([\s\u3000]*編號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*[:：][\s\u3000]*(\d+)[\s\u3000]*\)/);
   if (orderMatch) {
     const courseId = orderMatch[2].trim();
@@ -18,7 +18,7 @@ export async function handleAIRequest(event, env) {
       await createOrder(userId, courseId, amount, env);
       const orders = await getUserOrders(userId, env);
       return await replyToLINE(event.replyToken, '感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳', generateOrderListFlexMessage(orders), env);
-    } catch (e) { return await replyToLINE(event.replyToken, '系統忙碌中，請稍後再試。', null, env); }
+    } catch (e) { return await replyToLINE(event.replyToken, '預約系統忙碌中，請稍後再試。', null, env); }
   }
 
   // 2. 處理取消預約
@@ -43,14 +43,14 @@ export async function handleAIRequest(event, env) {
     return await replyToLINE(event.replyToken, '目前查無紀錄。', null, env);
   }
 
-  // 4. 查看課程選單
+  // 4. 查看課程選單 (核心修復：確保 categories 有資料)
   if (userMessage === '我想看課程' || userMessage === '我想報名') {
     const cats = await getCourseCategories(env);
     if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, '目前暫無課程開放預約。', null, env);
     return await replyToLINE(event.replyToken, '請選擇課程類型：', generateCategoryFlexMessage(cats), env);
   }
 
-  // 5. 查詢分類
+  // 5. 查詢分類課程
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const catName = categoryMatch[1].trim();
@@ -59,10 +59,10 @@ export async function handleAIRequest(event, env) {
     return await replyToLINE(event.replyToken, '抱歉，目前找不到開放預約的課程。', null, env);
   }
 
-  // 6. AI 客服雙引擎架構 (效益最大化：Gemini 優先 + OpenAI 備援)
+  // 6. 智慧客服雙引擎 (效益最大化：Gemini 優先 + OpenAI 備援)
   const systemPrompt = "你是專業課程客服。模擬 LINE OA 原生資訊流格式，不包框、不加粗字、親切簡潔。";
   
-  // A. 嘗試首選引擎：Gemini (免費效益)
+  // A. 優先嘗試 Gemini (GAS-LINE-Gemini-Template 核心)
   const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey;
   try {
     const gRes = await fetch(geminiUrl, {
@@ -80,7 +80,7 @@ export async function handleAIRequest(event, env) {
     }
   } catch (err) {}
 
-  // B. 嘗試備援引擎：OpenAI (付費保障穩定性)
+  // B. 備援嘗試 OpenAI (付費保障)
   try {
     const oRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -94,7 +94,7 @@ export async function handleAIRequest(event, env) {
     }
   } catch (err) {}
 
-  // C. 最後防線
+  // 最終備援
   await replyToLINE(event.replyToken, "我現在無法思考，請稍後再問我一次，或者直接點選選單查看課程喔！", null, env);
 }
 
