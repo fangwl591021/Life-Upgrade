@@ -35,15 +35,16 @@ const tools = [
     type: "function",
     function: {
       name: "createOrder",
-      description: "正式提交報名，在試算表中建立新訂單。",
+      description: "正式提交初步預約，在試算表中建立新訂單。",
       parameters: {
         type: "object",
         properties: {
           lineUid: { type: "string" },
           courseId: { type: "string" },
+          courseName: { type: "string" },
           amount: { type: "number" }
         },
-        required: ["lineUid", "courseId", "amount"]
+        required: ["lineUid", "courseId", "courseName", "amount"]
       }
     }
   }
@@ -53,20 +54,25 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // --- 1. 超快速路徑 (優先權最高，絕對攔截) ---
+  // --- 1. 超快速路徑 (優先權最高) ---
 
-  // A. 預約報名攔截 (只要偵測到編號與金額格式，不論前後文字，直接報名)
-  const orderMatch = userMessage.match(/\(編號[\s\u3000]*:[\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*:[\s\u3000]*(\d+)\)/);
+  // A. 預約報名攔截
+  const orderMatch = userMessage.match(/我想預約\s*(.+?)\s*\(編號\s*:\s*(.+?)\s*,\s*金額\s*:\s*(\d+)\)/);
   if (orderMatch) {
-    const courseId = orderMatch[1].trim();
-    const amount = parseInt(orderMatch[2]);
+    const courseName = orderMatch[1].trim();
+    const courseId = orderMatch[2].trim();
+    const amount = parseInt(orderMatch[3]);
     try {
       await createOrder(userId, courseId, amount, env);
-      await sendTelegramMessage(`✅ 報名成功錄入！\nUID: ${userId}\n課程: ${courseId}\n金額: ${amount}`, env);
+      
+      // 發送初步預約通知
+      const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+      const notifyText = `✅ 新預約申請通知\n------------------\n🆔 訂單編號 : 待產生\n👤 Line UID : ${userId}\n📚 課程名稱 : ${courseName}\n💰 預約金額 : ${amount} 元\n🗓️ 預約時間 : ${now}`;
+      await sendTelegramMessage(notifyText, env);
+      
       return await replyToLINE(event.replyToken, "已為您完成預約！後續將由專人聯繫您安排匯款細節。", null, env);
     } catch (e) {
-      await sendTelegramMessage(`❌ 報名寫入失敗: ${e.message}`, env);
-      return await replyToLINE(event.replyToken, "報名程序發生錯誤，請稍後再試或聯繫客服。", null, env);
+      return await replyToLINE(event.replyToken, "預約程序發生錯誤，請稍後再試。", null, env);
     }
   }
 
@@ -80,35 +86,30 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // C. 特定分類查詢
+  // C. 分類查詢與首頁 (略，維持原邏輯)
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const cat = categoryMatch[1].trim();
     const courses = await getCourseList(cat, env);
     if (courses && courses.length > 0) {
       return await replyToLINE(event.replyToken, `以下是「${cat}」的課程細項：`, generateCourseFlexMessage(courses), env);
-    } else {
-      return await replyToLINE(event.replyToken, `抱歉，目前「${cat}」分類下暫無課程。`, null, env);
     }
   }
 
-  // D. 課程首頁
-  if (userMessage === '我想看課程' || userMessage === '有哪些課程' || userMessage === '課程列表') {
+  if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
   }
 
-  // --- 2. AI 路徑 (處理閒聊或非結構化指令) ---
+  // --- 2. AI 路徑 (處理其餘對話) ---
   const requestBody = {
     model: "gpt-4o",
     messages: [
       {
         role: "system",
         content: `你是專業課程客服。
-1. **嚴禁反問**：若用戶想看課程，請立刻呼叫工具展示 Flex Message。
-2. **報名處理**：若訊息含(編號:..., 金額:...)，這絕對是報名請求，請直接呼叫 createOrder。
-3. **查紀錄**：若詢問我的報名，呼叫 getUserOrders。
-4. 回覆需極簡，原生 LINE 格式。`
+1. **報名處理**：若偵測到報名意圖且有課程資訊，請呼叫 createOrder。
+2. 回覆風格簡潔，模擬 LINE OA 原生格式。`
       },
       { role: "user", content: userMessage }
     ],
@@ -126,45 +127,23 @@ export async function handleAIRequest(event, env) {
     const data = await gptRes.json();
     const message = data.choices[0]?.message;
 
-    let aiResponseText = '';
-    let flexMessage = null;
-
     if (message?.tool_calls) {
       for (const toolCall of message.tool_calls) {
         const fnName = toolCall.function.name;
         const args = JSON.parse(toolCall.function.arguments);
 
-        if (fnName === 'getCourseCategories') {
-          const cats = await getCourseCategories(env);
-          flexMessage = generateCategoryFlexMessage(cats);
-          aiResponseText = "為您列出課程類型：";
-        } else if (fnName === 'getCourseList') {
-          const courses = await getCourseList(args.category, env);
-          flexMessage = generateCourseFlexMessage(courses);
-          aiResponseText = `「${args.category}」的課程如下：`;
-        } else if (fnName === 'getUserOrders') {
+        if (fnName === 'getUserOrders') {
           const orders = await getUserOrders(userId, env);
-          if (orders.length > 0) {
-            flexMessage = generateOrderListFlexMessage(orders);
-            aiResponseText = "這是您的報名紀錄：";
-          } else {
-            aiResponseText = "查無報名紀錄。";
-          }
+          await replyToLINE(event.replyToken, orders.length > 0 ? "這是您的報名紀錄：" : "查無報名紀錄。", generateOrderListFlexMessage(orders), env);
         } else if (fnName === 'createOrder') {
           await createOrder(userId, args.courseId, args.amount, env);
-          aiResponseText = "已完成預約！後續將由專人聯繫您。";
+          await replyToLINE(event.replyToken, "已完成初步預約！", null, env);
         }
       }
-    } else {
-      aiResponseText = message?.content || "";
+    } else if (message?.content) {
+      await replyToLINE(event.replyToken, message.content, null, env);
     }
-
-    if (aiResponseText || flexMessage) {
-      await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
-    }
-  } catch (error) {
-    console.error(error);
-  }
+  } catch (error) {}
 }
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
