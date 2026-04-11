@@ -1,5 +1,6 @@
-import { getCourseCategories, getCourseList, createOrder, getUserOrders } from './google_sheets_handler.js';
+import { getCourseCategories, getCourseList, createOrder, getUserOrders, getUserProfile, cancelOrder } from './google_sheets_handler.js';
 import { generateCategoryFlexMessage, generateCourseFlexMessage, generateOrderListFlexMessage } from './message_templates.js';
+import { sendTelegramMessage } from './telegram_notifier.js';
 
 export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
@@ -8,18 +9,22 @@ export async function handleAIRequest(event, env) {
   // --- 1. 預約報名處理 ---
   const orderMatch = userMessage.match(/我想預約\s*([\s\S]+?)\s*\([\s\u3000]*編號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*[:：][\s\u3000]*(\d+)[\s\u3000]*\)/);
   if (orderMatch) {
+    const courseName = orderMatch[1].trim(); 
     const courseId = orderMatch[2].trim();
     const amount = parseInt(orderMatch[3]);
     try {
-      // 呼叫 GAS 建立訂單，GAS 會負責發送新預約 Telegram 通知
       await createOrder(userId, courseId, amount, env);
       const orders = await getUserOrders(userId, env);
       const flexMessage = generateOrderListFlexMessage(orders);
       const welcomeText = `感謝您的預約！請點擊下方按鈕完成匯款回報，期待在課程中與您相見歡，一起探索生命的無限可能！`;
+
+      const profile = await getUserProfile(userId, env);
+      const displayName = (profile && profile.name) ? profile.name : `UID: ${userId}`;
+      const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+      await sendTelegramMessage(`🛎️ 新預約申請通知\n__________________\n\n👤 預約人 : ${displayName}\n📚 課程名稱 : ${courseName}\n💰 預約金額 : ${amount} 元\n⏰ 預約時間 : ${now}`, env);
+
       return await replyToLINE(event.replyToken, welcomeText, flexMessage, env);
-    } catch (e) {
-      return await replyToLINE(event.replyToken, "預約系統忙碌中，請稍後再試。", null, env);
-    }
+    } catch (e) { return await replyToLINE(event.replyToken, "預約系統忙碌中，請稍後再試。", null, env); }
   }
 
   // --- 2. 取消報名處理 ---
@@ -27,12 +32,18 @@ export async function handleAIRequest(event, env) {
   if (cancelMatch) {
     const orderId = cancelMatch[1].trim();
     try {
-      // 呼叫 GAS 取消訂單，GAS 會負責發送取消的 Telegram 通知
-      await fetch(env.APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
-      });
+      // 在取消前先取得原金額
+      const orders = await getUserOrders(userId, env);
+      const targetOrder = orders.find(o => o.orderId === orderId);
+      const cancelAmount = targetOrder ? targetOrder.amount : 0;
+
+      await cancelOrder(orderId, env);
+
+      const profile = await getUserProfile(userId, env);
+      const displayName = (profile && profile.name) ? profile.name : `UID: ${userId}`;
+      const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+      await sendTelegramMessage(`🗑️ 取消預約通知\n__________________\n\n🆔 訂單單號 : ${orderId}\n👤 取消學員 : ${displayName}\n💰 原始金額 : ${cancelAmount} 元\n⏰ 取消時間 : ${now}`, env);
+
       return await replyToLINE(event.replyToken, `已成功為您取消單號 ${orderId} 的預約紀錄。`, null, env);
     } catch (e) { return await replyToLINE(event.replyToken, "取消失敗，請聯繫客服。", null, env); }
   }
@@ -47,7 +58,6 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // 課程選單
   if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
