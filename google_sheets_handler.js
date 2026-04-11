@@ -37,7 +37,6 @@ export async function createOrder(lineUid, courseId, amount, env) {
   try {
     await fetch(env.APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'createOrder', data: { lineUid, courseId, amount } })
     });
   } catch (e) {}
@@ -47,18 +46,7 @@ export async function cancelOrder(orderId, env) {
   try {
     await fetch(env.APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
-    });
-  } catch (e) {}
-}
-
-export async function reportPayment(orderId, last5, env) {
-  try {
-    await fetch(env.APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'reportPayment', data: { orderId, last5 } })
     });
   } catch (e) {}
 }
