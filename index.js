@@ -5,7 +5,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 處理 GET：顯示 LIFF 頁面
+    // GET 路由：處理 LIFF 表單
     if (request.method === 'GET') {
       if (url.searchParams.has('orderId')) return handleLiffPayment(url, env);
       return handleLiffDescription(url, env);
@@ -38,7 +38,7 @@ export default {
 };
 
 /**
- * 匯款回報表單 LIFF (支援自動帶入註冊資料、隱藏身分證)
+ * 匯款回報表單 LIFF (優化標籤顏色為正黑)
  */
 async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
@@ -48,31 +48,33 @@ async function handleLiffPayment(url, env) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>回報匯款資訊</title>
+      <title>匯款回報資訊</title>
       <style>
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f4f7f9; color: #333; padding-bottom: 40px; }
         .header { background: #1DB446; color: white; padding: 25px 20px; text-align: center; }
         .container { padding: 15px; max-width: 500px; margin: auto; }
         .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 15px; }
-        .label { font-size: 13px; color: #888; margin-bottom: 5px; font-weight: bold; }
+        /* 修改標籤顏色為正黑 */
+        .label { font-size: 14px; color: #000; margin-bottom: 5px; font-weight: bold; }
         .value { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #000; }
-        input { width: 100%; padding: 14px; border: 1px solid #e0e0e0; border-radius: 10px; box-sizing: border-box; font-size: 16px; margin-bottom: 15px; background: #fafafa; }
+        input { width: 100%; padding: 14px; border: 1px solid #e0e0e0; border-radius: 10px; box-sizing: border-box; font-size: 16px; margin-bottom: 15px; background: #fafafa; color: #000; }
+        input:focus { border-color: #007AFF; outline: none; background: #fff; }
         .btn { background: #007AFF; color: white; text-align: center; padding: 16px; border-radius: 12px; border: none; width: 100%; font-size: 17px; font-weight: bold; cursor: pointer; }
       </style>
     </head>
     <body>
       <div class="header"><div style="font-size: 20px; font-weight: bold;">回報匯款資訊</div></div>
       <div class="container">
-        <div id="loading" style="text-align:center; padding: 50px; color:#999;">正在檢查註冊資料...</div>
+        <div id="loading" style="text-align:center; padding: 50px; color:#999;">正在連線...</div>
         <form id="payForm" style="display:none;">
           <div class="card">
             <div class="label">訂單單號</div><div class="value" id="d-oid"></div>
             <div class="label">報名課程</div><div class="value" id="d-name"></div>
           </div>
           <div class="card">
-            <div class="label">學員姓名</div><input type="text" id="name" required />
-            <div class="label">聯絡電話</div><input type="tel" id="phone" required />
-            <div class="label">匯款帳號末五碼</div><input type="number" id="last5" pattern="[0-9]*" inputmode="numeric" required />
+            <div class="label">學員真實姓名</div><input type="text" id="name" placeholder="請輸入姓名" required />
+            <div class="label">聯絡電話</div><input type="tel" id="phone" placeholder="請輸入手機" required />
+            <div class="label">匯款帳號末五碼</div><input type="number" id="last5" placeholder="請填寫末 5 位數字" pattern="[0-9]*" inputmode="numeric" required />
           </div>
           <button type="submit" class="btn" id="subBtn">確認送出回報</button>
         </form>
@@ -103,9 +105,8 @@ async function handleLiffPayment(url, env) {
             }
             document.getElementById('loading').style.display = 'none';
             document.getElementById('payForm').style.display = 'block';
-          } else { document.getElementById('loading').innerText = '找不到訂單資料'; }
+          }
         });
-
         document.getElementById('payForm').onsubmit = async (e) => {
           e.preventDefault();
           const btn = document.getElementById('subBtn');
@@ -122,7 +123,7 @@ async function handleLiffPayment(url, env) {
             }
           })});
           const result = await res.json();
-          if (result.status === 'success') { alert('回報完成！期待與您見面。'); liff.closeWindow(); }
+          if (result.status === 'success') { alert('回報成功！期待與您見面。✨'); liff.closeWindow(); }
         };
       </script>
     </body>
@@ -131,9 +132,6 @@ async function handleLiffPayment(url, env) {
   return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
 
-/**
- * 課程說明頁面 LIFF (修復 1101 缺失函式)
- */
 async function handleLiffDescription(url, env) {
   let cid = url.searchParams.get('id');
   const html = `
