@@ -1,9 +1,7 @@
-// 產生報名紀錄查詢 Flex Message (重點：回報匯款按鈕改為 URI 開啟 LIFF)
 export function generateOrderListFlexMessage(orders) {
   if (!orders || orders.length === 0) return null;
   
   const bubbles = orders.map(order => {
-    // 這裡使用你的 LIFF 連結，並夾帶 orderId 參數
     const liffPaymentUrl = `https://liff.line.me/2009130603-ktCTGk6d?orderId=${order.orderId}`;
     
     return {
@@ -18,7 +16,7 @@ export function generateOrderListFlexMessage(orders) {
             type: "text",
             text: "報名資訊確認",
             weight: "bold",
-            size: "md",
+            size: "lg",
             color: "#1DB446"
           },
           { type: "separator" },
@@ -31,55 +29,60 @@ export function generateOrderListFlexMessage(orders) {
                 type: "text",
                 text: order.courseName,
                 weight: "bold",
-                size: "sm",
-                wrap: true
+                size: "lg", 
+                wrap: true,
+                color: "#000000" // 正黑
               },
               {
                 type: "text",
                 text: `訂單編號: ${order.orderId}`,
-                size: "xs",
-                color: "#aaaaaa"
+                size: "md", // 加大
+                color: "#000000" // 正黑
               },
               {
                 type: "text",
                 text: `應付金額: NT$ ${order.amount}`,
-                size: "sm",
+                size: "xl", // 再加大
                 color: "#FF0000",
                 weight: "bold"
               },
               {
                 type: "text",
                 text: `目前狀態: ${order.status}`,
-                size: "sm",
-                weight: "bold"
+                size: "lg", // 加大
+                weight: "bold",
+                color: "#000000" // 正黑
               }
             ]
           },
           {
             type: "box",
             layout: "vertical",
-            backgroundColor: "#f8f8f8",
-            paddingAll: "md",
-            cornerRadius: "sm",
+            backgroundColor: "#f0f0f0",
+            paddingAll: "lg",
+            cornerRadius: "md",
             contents: [
               {
                 type: "text",
                 text: "匯款帳戶：(822) 中國信託",
-                size: "xs",
-                color: "#888888"
+                size: "md", // 加大
+                color: "#000000", // 正黑
+                weight: "bold"
               },
               {
                 type: "text",
                 text: "帳號：123-45678-9012",
-                size: "xs",
-                color: "#888888"
+                size: "md", // 加大
+                color: "#000000", // 正黑
+                weight: "bold",
+                margin: "xs"
               },
               {
                 type: "text",
                 text: "匯款後請點擊下方按鈕回報",
-                size: "xs",
-                color: "#888888",
-                margin: "xs"
+                size: "md", // 加大
+                color: "#000000", // 正黑
+                margin: "sm"
               }
             ]
           }
@@ -93,12 +96,12 @@ export function generateOrderListFlexMessage(orders) {
           {
             type: "button",
             action: {
-              type: "uri", // 改為 uri 類型
+              type: "uri",
               label: "回報匯款",
-              uri: liffPaymentUrl // 指向 LIFF 表單頁面
+              uri: liffPaymentUrl
             },
             style: "primary",
-            height: "sm",
+            height: "md",
             color: "#1DB446"
           },
           {
@@ -109,7 +112,7 @@ export function generateOrderListFlexMessage(orders) {
               text: `我想取消報名 (單號:${order.orderId})`
             },
             style: "secondary",
-            height: "sm"
+            height: "md"
           }
         ]
       }
@@ -126,7 +129,6 @@ export function generateOrderListFlexMessage(orders) {
   };
 }
 
-// 產生第一層：課程分類輪播卡片 (維持原 micro 版型)
 export function generateCategoryFlexMessage(categories) {
   if (!categories || categories.length === 0) return null;
   const categoryImages = {
@@ -147,7 +149,7 @@ export function generateCategoryFlexMessage(categories) {
         contents: [
           { type: "image", url: imageUrl, size: "full", aspectRatio: "20:13", aspectMode: "cover" },
           { type: "box", layout: "vertical", paddingAll: "sm", contents: [
-            { type: "text", text: category, weight: "bold", size: "sm", align: "center", color: "#333333" }
+            { type: "text", text: category, weight: "bold", size: "md", align: "center", color: "#000000" }
           ]}
         ]
       },
@@ -161,7 +163,6 @@ export function generateCategoryFlexMessage(categories) {
   return { type: "flex", altText: "請選擇感興趣的課程類型", contents: { type: "carousel", contents: bubbles } };
 }
 
-// 產生第二層：課程清單
 export function generateCourseFlexMessage(courses) {
   if (!courses || courses.length === 0) return null;
   const bubbles = courses.slice(0, 10).map(course => {
@@ -178,9 +179,9 @@ export function generateCourseFlexMessage(courses) {
         type: "box", layout: "vertical", paddingAll: "0px", contents: [
           { type: "image", url: img, size: "full", aspectRatio: "20:13", aspectMode: "cover" },
           { type: "box", layout: "vertical", paddingAll: "lg", spacing: "sm", contents: [
-            { type: "text", text: course.name || "未命名課程", weight: "bold", size: "xl", wrap: true },
-            { type: "text", text: course.description || "暫無簡介", size: "sm", color: "#666666", wrap: true, maxLines: 5 },
-            { type: "text", text: `NT $${course.price || 0}起`, color: "#FF0000", align: "end", weight: "bold", size: "lg", margin: "md" }
+            { type: "text", text: course.name || "未命名課程", weight: "bold", size: "xl", wrap: true, color: "#000000" },
+            { type: "text", text: course.description || "暫無簡介", size: "md", color: "#000000", wrap: true, maxLines: 5 },
+            { type: "text", text: `NT $${course.price || 0}起`, color: "#FF0000", align: "end", weight: "bold", size: "xl", margin: "md" }
           ]}
         ]
       },
