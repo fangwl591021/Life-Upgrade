@@ -1,7 +1,12 @@
 export async function sendTelegramMessage(text, env) {
-  // 將 Token 與 Chat ID 寫死，作為絕對保底
-  const botToken = "8744985479:AAGFfK4ze6awhdkWDpKcTSHKO6Ys_uBxPfo";
-  const chatId = "-5283526670";
+  // 改回安全讀取環境變數，絕對不能寫死在程式碼中
+  const botToken = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+
+  if (!botToken || !chatId) {
+    console.error("Missing Telegram credentials");
+    return;
+  }
 
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   
