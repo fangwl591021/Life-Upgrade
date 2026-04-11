@@ -5,11 +5,10 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // 使用 Cloudflare 環境變數中的 API Keys
   const geminiKey = env.GEMINI_API_KEY;
   const openaiKey = env.OPENAI_API_KEY;
 
-  // 1. 處理預約報名指令 (RegExp 匹配格式)
+  // 1. 處理報名指令
   const orderMatch = userMessage.match(/我想預約\s*([\s\S]+?)\s*\([\s\u3000]*編號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*[:：][\s\u3000]*(\d+)[\s\u3000]*\)/);
   if (orderMatch) {
     const courseId = orderMatch[2].trim();
@@ -18,10 +17,10 @@ export async function handleAIRequest(event, env) {
       await createOrder(userId, courseId, amount, env);
       const orders = await getUserOrders(userId, env);
       return await replyToLINE(event.replyToken, '感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳', generateOrderListFlexMessage(orders), env);
-    } catch (e) { return await replyToLINE(event.replyToken, '預約系統忙碌中，請稍後再試。', null, env); }
+    } catch (e) { return await replyToLINE(event.replyToken, '系統忙碌中，請稍後再試。', null, env); }
   }
 
-  // 2. 處理取消預約
+  // 2. 取消報名
   const cancelMatch = userMessage.match(/我想取消報名\s*\(單號\s*[:：]\s*(.+?)\)/);
   if (cancelMatch) {
     const orderId = cancelMatch[1].trim();
@@ -43,14 +42,14 @@ export async function handleAIRequest(event, env) {
     return await replyToLINE(event.replyToken, '目前查無紀錄。', null, env);
   }
 
-  // 4. 查看課程選單 (核心修復：確保 categories 有資料)
+  // 4. 查看課程選單
   if (userMessage === '我想看課程' || userMessage === '我想報名') {
     const cats = await getCourseCategories(env);
     if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, '目前暫無課程開放預約。', null, env);
     return await replyToLINE(event.replyToken, '請選擇課程類型：', generateCategoryFlexMessage(cats), env);
   }
 
-  // 5. 查詢分類課程
+  // 5. 分類查詢
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const catName = categoryMatch[1].trim();
@@ -59,19 +58,14 @@ export async function handleAIRequest(event, env) {
     return await replyToLINE(event.replyToken, '抱歉，目前找不到開放預約的課程。', null, env);
   }
 
-  // 6. 智慧客服雙引擎 (效益最大化：Gemini 優先 + OpenAI 備援)
-  const systemPrompt = "你是專業課程客服。模擬 LINE OA 原生資訊流格式，不包框、不加粗字、親切簡潔。";
-  
-  // A. 優先嘗試 Gemini (GAS-LINE-Gemini-Template 核心)
+  // 6. 雙引擎 AI (Gemini 優先)
+  const systemPrompt = "你是人生進化 Action 專業客服。模擬 LINE 原生資訊流，不包框、不加粗、親切。";
   const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey;
   try {
     const gRes = await fetch(geminiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        contents: [{ parts: [{ text: userMessage }] }], 
-        systemInstruction: { parts: [{ text: systemPrompt }] } 
-      })
+      body: JSON.stringify({ contents: [{ parts: [{ text: userMessage }] }], systemInstruction: { parts: [{ text: systemPrompt }] } })
     });
     if (gRes.ok) {
       const gData = await gRes.json();
@@ -80,7 +74,6 @@ export async function handleAIRequest(event, env) {
     }
   } catch (err) {}
 
-  // B. 備援嘗試 OpenAI (付費保障)
   try {
     const oRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -94,8 +87,7 @@ export async function handleAIRequest(event, env) {
     }
   } catch (err) {}
 
-  // 最終備援
-  await replyToLINE(event.replyToken, "我現在無法思考，請稍後再問我一次，或者直接點選選單查看課程喔！", null, env);
+  await replyToLINE(event.replyToken, "我現在無法思考，請稍後再試，或直接點選選單查看課程喔！", null, env);
 }
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
