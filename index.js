@@ -11,16 +11,20 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const workerUrl = url.origin;
+
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+
     if (request.method === 'GET') {
       if (url.searchParams.has('orderId')) return handleLiffPayment(url, env, workerUrl);
       return handleLiffDescription(url, env);
     }
+
     if (request.method === 'POST') {
       try {
         const clonedRequest = request.clone();
         const body = await request.json();
         if (!body.events || body.events.length === 0) return new Response('OK');
+
         for (const event of body.events) {
           if (event.type === 'message' && event.message.type === 'text') {
             const text = event.message.text.trim();
@@ -98,9 +102,9 @@ async function handleLiffDescription(url, env) {
       <style>body{font-family:sans-serif;margin:0;background:#fff}.container{padding-bottom:80px}img{width:100%;height:auto;background:#eee}.content{padding:20px}.price{color:#f00;font-weight:bold;font-size:22px;margin:10px 0}.desc{line-height:1.7;white-space:pre-wrap;color:#000;font-size:18px}.btn-box{position:fixed;bottom:0;width:100%;padding:15px;background:#fff;box-sizing:border-box;border-top:1px solid #eee}.btn{background:#007AFF;color:#fff;text-align:center;padding:14px;border-radius:10px;border:none;width:100%;font-weight:bold;cursor:pointer;font-size:18px}</style>
     </head>
     <body>
-      <div id="loading" style="padding:100px 20px;text-align:center;font-size:18px">讀取中...</div>
+      <div id="loading" style="padding: 100px 20px; text-align:center;font-size:18px">讀取中...</div>
       <div id="app" style="display:none"><img id="c-img" src="" /><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div></div>
-      <div class="btn-box" id="btn-container" style="display:none"><button class="btn" onclick="liff.closeWindow()">關閉</button></div>
+      <div class="btn-box" id="btn-container" style="display:none;"><button class="btn" onclick="liff.closeWindow()">關閉</button></div>
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
