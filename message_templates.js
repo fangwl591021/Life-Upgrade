@@ -31,27 +31,27 @@ export function generateOrderListFlexMessage(orders) {
                 weight: "bold",
                 size: "lg", 
                 wrap: true,
-                color: "#000000" // 正黑
+                color: "#000000"
               },
               {
                 type: "text",
                 text: `訂單編號: ${order.orderId}`,
-                size: "md", // 加大
-                color: "#000000" // 正黑
+                size: "md",
+                color: "#000000"
               },
               {
                 type: "text",
                 text: `應付金額: NT$ ${order.amount}`,
-                size: "xl", // 再加大
+                size: "xl",
                 color: "#FF0000",
                 weight: "bold"
               },
               {
                 type: "text",
                 text: `目前狀態: ${order.status}`,
-                size: "lg", // 加大
+                size: "lg",
                 weight: "bold",
-                color: "#000000" // 正黑
+                color: "#000000"
               }
             ]
           },
@@ -65,23 +65,23 @@ export function generateOrderListFlexMessage(orders) {
               {
                 type: "text",
                 text: "匯款帳戶：(822) 中國信託",
-                size: "md", // 加大
-                color: "#000000", // 正黑
+                size: "md",
+                color: "#000000",
                 weight: "bold"
               },
               {
                 type: "text",
                 text: "帳號：123-45678-9012",
-                size: "md", // 加大
-                color: "#000000", // 正黑
+                size: "md",
+                color: "#000000",
                 weight: "bold",
                 margin: "xs"
               },
               {
                 type: "text",
                 text: "匯款後請點擊下方按鈕回報",
-                size: "md", // 加大
-                color: "#000000", // 正黑
+                size: "md",
+                color: "#000000",
                 margin: "sm"
               }
             ]
