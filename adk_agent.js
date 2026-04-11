@@ -18,7 +18,7 @@ export async function handleAIRequest(event, env) {
       const flexMessage = generateOrderListFlexMessage(orders);
       const welcomeText = `感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳，期待在課程中與您相見歡，一起探索生命的無限可能！🌈`;
 
-      // 判斷：如果有註冊姓名就不顯示 UID
+      // 檢查：如果有註冊姓名就不顯示 UID
       const profile = await getUserProfile(userId, env);
       const displayName = (profile && profile.name) ? profile.name : `UID: ${userId}`;
       const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
@@ -42,7 +42,7 @@ export async function handleAIRequest(event, env) {
         body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
       });
       
-      // 判斷：如果有註冊姓名就不顯示 UID
+      // 檢查：如果有註冊姓名就不顯示 UID
       const profile = await getUserProfile(userId, env);
       const displayName = (profile && profile.name) ? profile.name : `UID: ${userId}`;
       const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
@@ -62,7 +62,7 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // 課程首頁與選單邏輯維持...
+  // 選單邏輯
   if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
@@ -77,9 +77,10 @@ export async function handleAIRequest(event, env) {
     }
   }
 
+  // AI 閒聊
   const requestBody = {
     model: "gpt-4o",
-    messages: [{ role: "system", content: "你是專業課程客服。語氣溫暖體貼。若用戶想看課程或查詢預約，請引導使用選單。" }, { role: "user", content: userMessage }],
+    messages: [{ role: "system", content: "你是專業課程客服。語氣溫暖體貼。不包框、不加粗。" }, { role: "user", content: userMessage }],
     tool_choice: "auto"
   };
 
