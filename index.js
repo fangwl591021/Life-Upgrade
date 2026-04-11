@@ -11,21 +11,27 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const workerUrl = url.origin;
+
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+
     if (request.method === 'GET') {
       if (url.searchParams.has('orderId')) return handleLiffPayment(url, env, workerUrl);
       return handleLiffDescription(url, env);
     }
+
     if (request.method === 'POST') {
       try {
         const clonedRequest = request.clone();
         const body = await request.json();
         if (!body.events || body.events.length === 0) return new Response('OK');
+
         for (const event of body.events) {
           if (event.type === 'message' && event.message.type === 'text') {
             const text = event.message.text.trim();
             const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
             if (aiKeywords.some(k => text.includes(k))) {
+              // 補回：觸發等待動畫
+              ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
               ctx.waitUntil(handleAIRequest(event, env));
             } else {
               ctx.waitUntil(forwardToWP(clonedRequest, env));
@@ -40,6 +46,16 @@ export default {
     return new Response('Running', { status: 200 });
   }
 };
+
+async function triggerLoadingAnimation(userId, env) {
+  try {
+    await fetch('https://api.line.me/v2/bot/chat/loading/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+      body: JSON.stringify({ chatId: userId, loadingSeconds: 5 })
+    });
+  } catch (e) {}
+}
 
 async function handleLiffPayment(url, env, workerUrl) {
   const orderId = url.searchParams.get('orderId');
