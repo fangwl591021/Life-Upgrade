@@ -13,7 +13,7 @@ export async function handleAIRequest(event, env) {
       await createOrder(userId, courseId, amount, env);
       const orders = await getUserOrders(userId, env);
       return await replyToLINE(event.replyToken, '感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳', generateOrderListFlexMessage(orders), env);
-    } catch (e) { return await replyToLINE(event.replyToken, '系統忙碌中。', null, env); }
+    } catch (e) { return await replyToLINE(event.replyToken, '預約系統忙碌中，請稍後再試。', null, env); }
   }
 
   const cancelMatch = userMessage.match(/我想取消報名\s*\(單號\s*[:：]\s*(.+?)\)/);
@@ -33,7 +33,7 @@ export async function handleAIRequest(event, env) {
 
   if (userMessage === '我想看課程') {
     const cats = await getCourseCategories(env);
-    if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, '目前暫無課程。', null, env);
+    if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, '目前暫無課程開放預約。', null, env);
     return await replyToLINE(event.replyToken, '請選擇課程類型：', generateCategoryFlexMessage(cats), env);
   }
 
@@ -42,13 +42,13 @@ export async function handleAIRequest(event, env) {
     const catName = categoryMatch[1].trim();
     const courses = await getCourseList(catName, env);
     if (courses && courses.length > 0) return await replyToLINE(event.replyToken, '以下是「' + catName + '」的課程細項：', generateCourseFlexMessage(courses), env);
-    return await replyToLINE(event.replyToken, '抱歉，找不到課程。', null, env);
+    return await replyToLINE(event.replyToken, '抱歉，目前找不到開放預約的課程。', null, env);
   }
 
   const requestBody = {
     model: "gpt-4o",
     messages: [
-      { role: "system", content: "你是客服，模擬 LINE 原生格式，不包框、不加粗、親切。" },
+      { role: "system", content: "你是專業客服。模擬 LINE 原生資訊流格式，不包框、不加粗、親切。" },
       { role: "user", content: userMessage }
     ]
   };
