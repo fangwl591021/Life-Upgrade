@@ -5,6 +5,7 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
+  // 1. 處理預約報名
   const orderMatch = userMessage.match(/我想預約\s*([\s\S]+?)\s*\([\s\u3000]*編號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*[:：][\s\u3000]*(\d+)[\s\u3000]*\)/);
   if (orderMatch) {
     const courseId = orderMatch[2].trim();
@@ -16,6 +17,7 @@ export async function handleAIRequest(event, env) {
     } catch (e) { return await replyToLINE(event.replyToken, "預約系統忙碌中，請稍後再試。", null, env); }
   }
 
+  // 2. 處理取消報名
   const cancelMatch = userMessage.match(/我想取消報名\s*\(單號\s*[:：]\s*(.+?)\)/);
   if (cancelMatch) {
     const orderId = cancelMatch[1].trim();
@@ -25,18 +27,21 @@ export async function handleAIRequest(event, env) {
     } catch (e) { return await replyToLINE(event.replyToken, "取消失敗。", null, env); }
   }
 
+  // 3. 查詢報名紀錄
   if (userMessage.includes('我的預約') || userMessage.includes('我的報名')) {
     const orders = await getUserOrders(userId, env);
     if (orders && orders.length > 0) return await replyToLINE(event.replyToken, "這是您的報名紀錄：", generateOrderListFlexMessage(orders), env);
     return await replyToLINE(event.replyToken, "目前查無紀錄。", null, env);
   }
 
-  if (userMessage === '我想看課程') {
+  // 4. 查看課程選單
+  if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, "目前暫無課程開放預約。", null, env);
     return await replyToLINE(event.replyToken, "請選擇課程類型：", generateCategoryFlexMessage(cats), env);
   }
 
+  // 5. 查詢特定分類課程 (加強去空白匹配)
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const catName = categoryMatch[1].trim();
@@ -44,10 +49,11 @@ export async function handleAIRequest(event, env) {
     if (courses && courses.length > 0) {
         return await replyToLINE(event.replyToken, `以下是「${catName}」的課程細項：`, generateCourseFlexMessage(courses), env);
     } else {
-        return await replyToLINE(event.replyToken, `抱歉，目前在「${catName}」分類中找不到開放預約的課程。`, null, env);
+        return await replyToLINE(event.replyToken, `抱歉，目前在「${catName}」分類中找不到課程。`, null, env);
     }
   }
 
+  // AI 閒聊
   const requestBody = { model: "gpt-4o", messages: [{ role: "system", content: "你是專業課程客服。模擬 LINE OA 原生資訊流格式，不包框、不加粗字。" }, { role: "user", content: userMessage }] };
   try {
     const gptRes = await fetch("https://api.openai.com/v1/chat/completions", { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.OPENAI_API_KEY}` }, body: JSON.stringify(requestBody) });
