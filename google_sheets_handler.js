@@ -24,20 +24,11 @@ export async function getUserOrders(lineUid, env) {
   } catch (e) { return []; }
 }
 
-export async function getUserProfile(lineUid, env) {
-  try {
-    const url = `${env.APPS_SCRIPT_URL}?action=getUserProfile&lineUid=${lineUid}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    return json.data || null;
-  } catch (e) { return null; }
-}
-
 export async function createOrder(lineUid, courseId, amount, env) {
   try {
     await fetch(env.APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'createOrder', data: { lineUid, courseId, amount } })
     });
   } catch (e) {}
@@ -47,7 +38,7 @@ export async function cancelOrder(orderId, env) {
   try {
     await fetch(env.APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
     });
   } catch (e) {}
