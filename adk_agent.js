@@ -57,7 +57,7 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // --- 4. 課程首頁 (加入 TG 測試推播) ---
+  // --- 4. 課程首頁 (已加入你的 TG 測試推播) ---
   if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     
