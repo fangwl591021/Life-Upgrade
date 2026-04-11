@@ -6,4 +6,4 @@ compatibility_date = "2024-04-10"
 # 這裡務必保留，部署時才不會刪除後台變數
 WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
 TELEGRAM_CHAT_ID = "-5283526670"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFMva0VgmapLnuaaxkWsJbdB8xKvDV8uFMDYhSAH1PXtH1o69nh6udSLRqPJlEB4L81Q/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwvahUh5wUbcdWHY7nLlUh8478Kb5ustO1EH84R28hZsnBIEXi3-vg67UkCglQh6ChIkA/exec"
