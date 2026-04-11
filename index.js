@@ -12,32 +12,33 @@ export default {
     }
 
     if (request.method === 'POST') {
-      // --- 核心優化：LIFF 回報透過 Worker 轉發，解決 GAS 授權阻擋通知的問題 ---
+      // 1. 攔截 LIFF 的匯款回報 API，確保發送 Telegram 通知
       if (url.pathname === '/api/reportPayment') {
         try {
-          const body = await request.json();
-          // 1. 寫入 GAS
+          const payload = await request.json();
+          // 將資料轉發給 GAS 寫入
           const gasRes = await fetch(env.APPS_SCRIPT_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'reportPayment', data: body })
+            body: JSON.stringify({ action: 'reportPayment', data: payload })
           });
-          const result = await gasRes.json();
-          
-          if (result.status === 'success') {
-            // 2. GAS 寫入成功後，由 Cloudflare Worker 發送 TG 通知
+          const gasResult = await gasRes.json();
+
+          if (gasResult.status === 'success') {
+            // 寫入成功後，由 Cloudflare Worker 發送 TG 匯款通知
             const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-            const text = `✅ 新報名成功通知\n__________________\n\n🆔 訂單編號 : ${body.orderId}\n👤 學員姓名 : ${body.name}\n📞 聯絡電話 : ${body.phone}\n📚 課程名稱 : ${body.courseName}\n🏪 店家帳號 : kelly\n💰 報名金額 : ${body.amount || 0} 元\n🔢 帳號末五碼 : ${body.last5}\n🗓️ 報名時間 : ${now}`;
-            await sendTelegramMessage(text, env);
-            return new Response(JSON.stringify({status: 'success'}), { headers: { 'Content-Type': 'application/json' } });
+            const tgText = `✅ 匯款回報成功通知\n__________________\n\n🆔 訂單編號 : ${payload.orderId}\n👤 學員姓名 : ${payload.name}\n📞 聯絡電話 : ${payload.phone}\n📚 課程名稱 : ${payload.courseName || "未知"}\n🏪 店家帳號 : kelly\n💰 報名金額 : ${payload.amount || 0} 元\n🔢 帳號末五碼 : ${payload.last5}\n🗓️ 回報時間 : ${now}`;
+            await sendTelegramMessage(tgText, env);
+            return new Response(JSON.stringify({ status: 'success' }), { headers: { 'Content-Type': 'application/json' } });
+          } else {
+            return new Response(JSON.stringify({ status: 'error', message: '寫入失敗' }), { headers: { 'Content-Type': 'application/json' } });
           }
-          return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
-        } catch(e) {
-          return new Response(JSON.stringify({status: 'error'}), { headers: { 'Content-Type': 'application/json' } });
+        } catch (e) {
+          return new Response(JSON.stringify({ status: 'error', message: e.toString() }), { headers: { 'Content-Type': 'application/json' } });
         }
       }
 
-      // --- 原本的 LINE Webhook 處理 ---
+      // 2. 處理原本的 LINE Webhook 事件
       try {
         const clonedRequest = request.clone();
         const body = await request.json();
@@ -48,6 +49,7 @@ export default {
             const text = event.message.text.trim();
             const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
             if (aiKeywords.some(k => text.includes(k))) {
+              ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
               ctx.waitUntil(handleAIRequest(event, env));
             } else {
               ctx.waitUntil(forwardToWP(clonedRequest, env));
@@ -59,13 +61,13 @@ export default {
         return new Response('OK');
       } catch (e) { return new Response('OK'); }
     }
-    
+
     return new Response('Running', { status: 200 });
   }
 };
 
 /**
- * 匯款回報表單 LIFF (修改表單發送目標為 Worker 的 /api/reportPayment)
+ * 匯款回報表單 LIFF：將發送對象改為 Worker 的 /api/reportPayment
  */
 async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
@@ -84,7 +86,6 @@ async function handleLiffPayment(url, env) {
         .label { font-size: 14px; color: #000; margin-bottom: 5px; font-weight: bold; }
         .value { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #000; }
         input { width: 100%; padding: 14px; border: 1px solid #e0e0e0; border-radius: 10px; box-sizing: border-box; font-size: 16px; margin-bottom: 15px; background: #fafafa; color: #000; }
-        input:focus { border-color: #007AFF; outline: none; background: #fff; }
         .btn { background: #007AFF; color: white; text-align: center; padding: 16px; border-radius: 12px; border: none; width: 100%; font-size: 17px; font-weight: bold; cursor: pointer; }
       </style>
     </head>
@@ -133,16 +134,16 @@ async function handleLiffPayment(url, env) {
             document.getElementById('payForm').style.display = 'block';
           }
         });
-        
+
         document.getElementById('payForm').onsubmit = async (e) => {
           e.preventDefault();
           const btn = document.getElementById('subBtn');
           btn.disabled = true;
-          // 改為打向 Worker 自己的 API
+          // 將回報請求打給 Worker 的 /api/reportPayment
           const res = await fetch('/api/reportPayment', { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: JSON.stringify({ 
               orderId: oid, 
               name: document.getElementById('name').value, 
               phone: document.getElementById('phone').value, 
@@ -209,4 +210,14 @@ async function handleLiffDescription(url, env) {
     </html>
   `;
   return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
+}
+
+async function triggerLoadingAnimation(userId, env) {
+  try {
+    await fetch('https://api.line.me/v2/bot/chat/loading/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+      body: JSON.stringify({ chatId: userId, loadingSeconds: 5 })
+    });
+  } catch (e) {}
 }
