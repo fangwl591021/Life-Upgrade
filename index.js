@@ -204,8 +204,16 @@ async function handleLiffDescription(url, env) {
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
+          // 防呆：如果網址沒有帶 id 參數
+          const courseId = "${cid}";
+          if (!courseId || courseId === "null") {
+            document.getElementById('loading').innerText = '未指定課程！\\n請從 LINE 選單點擊「課程說明」進入。';
+            document.getElementById('loading').style.color = '#FF0000';
+            return;
+          }
+
           fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(r=>r.json()).then(res=>{
-            const c = res.data.find(x => x.id === "${cid}");
+            const c = res.data.find(x => x.id === courseId);
             if(c){
               document.getElementById('c-img').src = c.imageUrl || "";
               document.getElementById('c-name').innerText = c.name;
@@ -214,7 +222,13 @@ async function handleLiffDescription(url, env) {
               document.getElementById('loading').style.display='none';
               document.getElementById('app').style.display='block';
               document.getElementById('btn-container').style.display='block';
+            } else {
+              document.getElementById('loading').innerText = '找不到該課程資訊，可能已經下架。';
+              document.getElementById('loading').style.color = '#FF0000';
             }
+          }).catch(err => {
+            document.getElementById('loading').innerText = '系統連線錯誤，請稍後再試。';
+            document.getElementById('loading').style.color = '#FF0000';
           });
         });
       </script>
