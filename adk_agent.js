@@ -6,7 +6,7 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // --- 1. 預約報名攔截 (語氣溫暖化 + 自動顯示紀錄) ---
+  // --- 1. 超快速路徑：預約報名處理 (增加表情符號與優化語氣) ---
   const orderMatch = userMessage.match(/我想預約\s*(.+?)\s*\(編號\s*:\s*(.+?)\s*,\s*金額\s*:\s*(\d+)\)/);
   if (orderMatch) {
     const courseName = orderMatch[1].trim();
@@ -16,14 +16,16 @@ export async function handleAIRequest(event, env) {
       await createOrder(userId, courseId, amount, env);
       const orders = await getUserOrders(userId, env);
       const flexMessage = generateOrderListFlexMessage(orders);
-      const welcomeText = "感謝您的預約！請點擊下方按鈕完成匯款回報，期待在課程中與您相見歡，一起探索生命的無限可能！";
+      
+      // 優化後的溫暖接待語
+      const welcomeText = `感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳，期待在課程中與您相見歡，一起探索生命的無限可能！🌈`;
 
       const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-      await sendTelegramMessage(`🛎️ 新預約申請\n👤 UID: ${userId}\n📚 課程: ${courseName}\n💰 金額: ${amount}\n⏰ 時間: ${now}`, env);
+      await sendTelegramMessage(`🛎️ 新預約申請通知\n👤 UID: ${userId}\n📚 課程: ${courseName}\n💰 金額: ${amount}\n⏰ 時間: ${now}`, env);
 
       return await replyToLINE(event.replyToken, welcomeText, flexMessage, env);
     } catch (e) {
-      return await replyToLINE(event.replyToken, "抱歉，預約連線中斷，請稍後再試。", null, env);
+      return await replyToLINE(event.replyToken, "抱歉，預約系統暫時忙碌中，請稍後再試。🙏", null, env);
     }
   }
 
@@ -34,6 +36,7 @@ export async function handleAIRequest(event, env) {
     try {
       await fetch(env.APPS_SCRIPT_URL, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
       });
       await sendTelegramMessage(`🗑️ 使用者取消預約\n🆔 單號: ${orderId}`, env);
@@ -47,7 +50,7 @@ export async function handleAIRequest(event, env) {
     if (orders && orders.length > 0) {
       return await replyToLINE(event.replyToken, "這是您目前的報名紀錄：", generateOrderListFlexMessage(orders), env);
     } else {
-      return await replyToLINE(event.replyToken, "目前查無您的報名紀錄喔。", null, env);
+      return await replyToLINE(event.replyToken, "目前查無您的報名紀錄喔。☕", null, env);
     }
   }
 
@@ -67,11 +70,11 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // AI 閒聊
+  // AI 路徑
   const requestBody = {
     model: "gpt-4o",
     messages: [
-      { role: "system", content: "你是專業課程客服。語氣溫暖有禮。禁止使用包框或粗體。" },
+      { role: "system", content: "你是專業課程客服。語氣溫暖體貼。若用戶想預約或查紀錄，直接引導使用工具。禁止使用粗體或複雜包框。" },
       { role: "user", content: userMessage }
     ],
     tool_choice: "auto"
