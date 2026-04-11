@@ -77,14 +77,19 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // 處理課程分類按鈕 (格式：我想查詢 XXX 的課程)
-  const categoryMatch = userMessage.match(/我想查詢\s*(.+)\s*的課程/);
+  // 處理課程分類按鈕 (使用更強大的正則表達式，處理各種空格)
+  // 匹配：我想查詢 [分類名稱] 的課程
+  const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const cat = categoryMatch[1].trim();
+    // 除錯：發送 Telegram 讓你知道抓到的分類是什麼
+    await sendTelegramMessage(`🔍 偵測到分類查詢：[${cat}]`, env);
+    
     const courses = await getCourseList(cat, env);
     if (courses && courses.length > 0) {
       return await replyToLINE(event.replyToken, `以下是「${cat}」的課程細項：`, generateCourseFlexMessage(courses), env);
     } else {
+      await sendTelegramMessage(`⚠️ 注意：分類 [${cat}] 在試算表中找不到對應課程。`, env);
       return await replyToLINE(event.replyToken, `抱歉，目前「${cat}」分類下暫無課程。`, null, env);
     }
   }
@@ -165,7 +170,6 @@ export async function handleAIRequest(event, env) {
     if (aiResponseText || flexMessage) {
       await replyToLINE(event.replyToken, aiResponseText, flexMessage, env);
     } else {
-      // 確保至少回一句話，避免停掉
       await replyToLINE(event.replyToken, "收到您的訊息，處理中...", null, env);
     }
   } catch (error) {
