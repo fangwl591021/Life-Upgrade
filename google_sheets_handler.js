@@ -15,7 +15,6 @@ export async function getCourseList(category, env) {
   } catch (e) { return []; }
 }
 
-// [新增] 抓取使用者訂單
 export async function getUserOrders(lineUid, env) {
   try {
     const url = `${env.APPS_SCRIPT_URL}?action=getUserOrders&lineUid=${lineUid}`;
@@ -23,6 +22,15 @@ export async function getUserOrders(lineUid, env) {
     const json = await res.json();
     return json.data || [];
   } catch (e) { return []; }
+}
+
+export async function getUserProfile(lineUid, env) {
+  try {
+    const url = `${env.APPS_SCRIPT_URL}?action=getUserProfile&lineUid=${lineUid}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    return json.data || null;
+  } catch (e) { return null; }
 }
 
 export async function createOrder(lineUid, courseId, amount, env) {
@@ -35,13 +43,22 @@ export async function createOrder(lineUid, courseId, amount, env) {
   } catch (e) {}
 }
 
-// [新增] 取消報名
 export async function cancelOrder(orderId, env) {
   try {
     await fetch(env.APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
+    });
+  } catch (e) {}
+}
+
+export async function reportPayment(orderId, last5, env) {
+  try {
+    await fetch(env.APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reportPayment', data: { orderId, last5 } })
     });
   } catch (e) {}
 }
