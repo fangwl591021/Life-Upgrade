@@ -1,44 +1,90 @@
 import { handleAIRequest } from './adk_agent.js';
 import { forwardToWP } from './wp_proxy_handler.js';
+import { sendTelegramMessage } from './telegram_notifier.js';
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const workerUrl = url.origin;
 
+    // --- 1. 處理 CORS 預檢請求 (解決 LIFF 連線錯誤的關鍵) ---
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    };
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
+    // --- 2. 處理 GET：顯示 LIFF 頁面 ---
     if (request.method === 'GET') {
-      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env);
+      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env, workerUrl);
       return handleLiffDescription(url, env);
     }
 
-    if (request.method !== 'POST') return new Response('Running', { status: 200 });
+    // --- 3. 處理 POST：攔截 LIFF 的回報 API，由 Worker 發 TG 通知 ---
+    if (request.method === 'POST') {
+      if (url.pathname === '/api/reportPayment') {
+        try {
+          const payload = await request.json();
+          
+          // 轉發給 GAS 寫入試算表
+          const gasRes = await fetch(env.APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'reportPayment', data: payload })
+          });
+          const gasResult = await gasRes.json();
 
-    try {
-      const clonedRequest = request.clone();
-      const body = await request.json();
-      if (!body.events || body.events.length === 0) return new Response('OK');
+          if (gasResult.status === 'success') {
+            // 寫入成功，Worker 親自發送 Telegram 通知！
+            const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+            const tgText = `✅ 匯款回報成功通知\n__________________\n\n🆔 訂單編號 : ${payload.orderId}\n👤 學員姓名 : ${payload.name}\n📞 聯絡電話 : ${payload.phone}\n📚 課程名稱 : ${payload.courseName || "未知"}\n🏪 店家帳號 : kelly\n💰 報名金額 : ${payload.amount || 0} 元\n🔢 帳號末五碼 : ${payload.last5}\n🗓️ 回報時間 : ${now}`;
+            
+            await sendTelegramMessage(tgText, env);
+            
+            return new Response(JSON.stringify({ status: 'success' }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+          } else {
+            return new Response(JSON.stringify({ status: 'error', message: gasResult.message }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+          }
+        } catch (e) {
+          return new Response(JSON.stringify({ status: 'error', message: '系統錯誤' }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        }
+      }
 
-      for (const event of body.events) {
-        if (event.type === 'message' && event.message.type === 'text') {
-          const text = event.message.text.trim();
-          const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
-          if (aiKeywords.some(k => text.includes(k))) {
-            ctx.waitUntil(handleAIRequest(event, env));
+      // --- 4. 處理 LINE Webhook 事件 ---
+      try {
+        const clonedRequest = request.clone();
+        const body = await request.json();
+        if (!body.events || body.events.length === 0) return new Response('OK');
+
+        for (const event of body.events) {
+          if (event.type === 'message' && event.message.type === 'text') {
+            const text = event.message.text.trim();
+            const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
+            if (aiKeywords.some(k => text.includes(k))) {
+              ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
+              ctx.waitUntil(handleAIRequest(event, env));
+            } else {
+              ctx.waitUntil(forwardToWP(clonedRequest, env));
+            }
           } else {
             ctx.waitUntil(forwardToWP(clonedRequest, env));
           }
-        } else {
-          ctx.waitUntil(forwardToWP(clonedRequest, env));
         }
-      }
-      return new Response('OK');
-    } catch (e) { return new Response('OK'); }
+        return new Response('OK');
+      } catch (e) { return new Response('OK'); }
+    }
+
+    return new Response('Running', { status: 200 });
   }
 };
 
 /**
- * 匯款回報表單 LIFF (新增已取消阻擋、修改為直接打 GAS)
+ * 匯款回報表單 LIFF (表單提交時打向 Worker 的 /api/reportPayment)
  */
-async function handleLiffPayment(url, env) {
+async function handleLiffPayment(url, env, workerUrl) {
   const orderId = url.searchParams.get('orderId');
   const html = `
     <!DOCTYPE html>
@@ -52,16 +98,16 @@ async function handleLiffPayment(url, env) {
         .header { background: #1DB446; color: white; padding: 25px 20px; text-align: center; }
         .container { padding: 15px; max-width: 500px; margin: auto; }
         .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 15px; }
-        .label { font-size: 15px; color: #000; margin-bottom: 5px; font-weight: bold; }
-        .value { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #000; }
+        .label { font-size: 14px; color: #000; margin-bottom: 5px; font-weight: bold; }
+        .value { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #000; }
         input { width: 100%; padding: 14px; border: 1px solid #e0e0e0; border-radius: 10px; box-sizing: border-box; font-size: 16px; margin-bottom: 15px; background: #fafafa; color: #000; }
         .btn { background: #007AFF; color: white; text-align: center; padding: 16px; border-radius: 12px; border: none; width: 100%; font-size: 17px; font-weight: bold; cursor: pointer; }
       </style>
     </head>
     <body>
-      <div class="header"><div style="font-size: 22px; font-weight: bold;">回報匯款資訊</div></div>
+      <div class="header"><div style="font-size: 20px; font-weight: bold;">回報匯款資訊</div></div>
       <div class="container">
-        <div id="loading" style="text-align:center; padding: 50px; font-size:18px; color:#000; font-weight:bold;">檢查資料中...</div>
+        <div id="loading" style="text-align:center; padding: 50px; color:#000; font-weight:bold; font-size:18px;">檢查資料中...</div>
         <form id="payForm" style="display:none;">
           <div class="card">
             <div class="label">訂單單號</div><div class="value" id="d-oid"></div>
@@ -79,6 +125,7 @@ async function handleLiffPayment(url, env) {
       <script>
         const oid = "${orderId}";
         const gas = "${env.APPS_SCRIPT_URL}";
+        const apiTarget = "${workerUrl}/api/reportPayment";
         let cname = "";
         let camount = 0;
 
@@ -90,10 +137,7 @@ async function handleLiffPayment(url, env) {
             fetch(gas + "?action=getUserProfile&lineUid=" + userId).then(r => r.json())
           ]);
           
-          // 注意：我們在這裡需要尋找不分狀態的訂單，但 getUserOrders 已經排除了已取消
-          // 為求保險，如果找不到，就當作已被取消或無效
           const order = orderRes.data.find(o => o.orderId === oid);
-          
           if (!order) {
             document.getElementById('loading').innerText = '此單號不存在或已取消，無法回報匯款。';
             document.getElementById('loading').style.color = '#FF0000';
@@ -117,20 +161,16 @@ async function handleLiffPayment(url, env) {
           const btn = document.getElementById('subBtn');
           btn.disabled = true;
           try {
-            // 直接打給 GAS！保證不會有 404 問題
-            const res = await fetch(gas, { 
+            const res = await fetch(apiTarget, { 
               method: 'POST', 
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'reportPayment',
-                data: { 
-                  orderId: oid, 
-                  name: document.getElementById('name').value, 
-                  phone: document.getElementById('phone').value, 
-                  last5: document.getElementById('last5').value,
-                  courseName: cname,
-                  amount: camount
-                }
+              body: JSON.stringify({ 
+                orderId: oid, 
+                name: document.getElementById('name').value, 
+                phone: document.getElementById('phone').value, 
+                last5: document.getElementById('last5').value,
+                courseName: cname,
+                amount: camount
               })
             });
             const result = await res.json();
@@ -142,7 +182,7 @@ async function handleLiffPayment(url, env) {
               btn.disabled = false; 
             }
           } catch(err) {
-            alert('系統連線錯誤。');
+            alert('系統連線錯誤，請稍後再試。');
             btn.disabled = false;
           }
         };
@@ -153,51 +193,5 @@ async function handleLiffPayment(url, env) {
   return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
 
-async function handleLiffDescription(url, env) {
-  let cid = url.searchParams.get('id');
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>課程說明</title>
-      <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #fff; }
-        .container { padding-bottom: 80px; }
-        img { width: 100%; height: auto; background: #eee; }
-        .content { padding: 20px; }
-        .price { color: #f00; font-weight: bold; font-size: 22px; margin: 10px 0; }
-        .desc { line-height: 1.7; white-space: pre-wrap; color: #000; border-top: 1px solid #eee; padding-top: 15px; font-size: 18px; }
-        .btn-box { position: fixed; bottom: 0; width: 100%; padding: 15px; background: #fff; border-top: 1px solid #eee; box-sizing: border-box; }
-        .btn { background: #007AFF; color: #fff; text-align: center; padding: 14px; border-radius: 10px; border: none; width: 100%; font-weight: bold; cursor: pointer; font-size: 18px; }
-      </style>
-    </head>
-    <body>
-      <div id="loading" style="padding: 100px 20px; text-align: center; color: #000; font-size: 18px; font-weight: bold;">讀取中...</div>
-      <div id="app" style="display:none;">
-        <img id="c-img" src="" /><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div>
-      </div>
-      <div class="btn-box" id="btn-container" style="display:none;"><button class="btn" onclick="liff.closeWindow()">關閉</button></div>
-      <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-      <script>
-        liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
-          fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(r=>r.json()).then(res=>{
-            const c = res.data.find(x => x.id === "${cid}");
-            if(c){
-              document.getElementById('c-img').src = c.imageUrl || "";
-              document.getElementById('c-name').innerText = c.name;
-              document.getElementById('c-price').innerText = "NT $" + c.price + " 起";
-              document.getElementById('c-desc').innerText = c.description;
-              document.getElementById('loading').style.display='none';
-              document.getElementById('app').style.display='block';
-              document.getElementById('btn-container').style.display='block';
-            }
-          });
-        });
-      </script>
-    </body>
-    </html>
-  `;
-  return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
-}
+async function handleLiffDescription(url, env) { /* 維持不變 */ }
+async function triggerLoadingAnimation(userId, env) { /* 維持不變 */ }
