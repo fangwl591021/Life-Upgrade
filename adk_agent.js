@@ -16,25 +16,26 @@ export async function handleAIRequest(event, env) {
       try {
         await createOrder(userId, courseId, amount, env);
         const orders = await getUserOrders(userId, env);
-        return await replyToLINE(event.replyToken, `預約成功！請點擊下方按鈕進行匯款回報。`, generateOrderListFlexMessage(orders), env);
+        const flex = generateOrderListFlexMessage(orders);
+        return await replyToLINE(event.replyToken, `預約成功！✨ 請點擊下方按鈕進行匯款回報。`, flex, env);
       } catch (e) {
         return await replyToLINE(event.replyToken, "系統忙碌中，請稍後再試。", null, env);
       }
     }
   }
 
-  // 2. 處理取消 (寬鬆 Regex)
+  // 2. 處理取消
   if (userMessage.includes('我想取消報名')) {
     const oidMatch = userMessage.match(/單號[:：]\s*(\w+)/);
     if (oidMatch) {
       const orderId = oidMatch[1];
       try {
-        const res = await fetch(env.APPS_SCRIPT_URL, {
+        await fetch(env.APPS_SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
         });
-        return await replyToLINE(event.replyToken, `已為您取消單號: ${orderId}`, null, env);
+        return await replyToLINE(event.replyToken, `已成功取消預約：${orderId}`, null, env);
       } catch (e) {
         return await replyToLINE(event.replyToken, "取消失敗，請稍後再試。", null, env);
       }
@@ -46,7 +47,8 @@ export async function handleAIRequest(event, env) {
     try {
       const orders = await getUserOrders(userId, env);
       if (orders && orders.length > 0) {
-        return await replyToLINE(event.replyToken, "以下是您的報名紀錄：", generateOrderListFlexMessage(orders), env);
+        const flex = generateOrderListFlexMessage(orders);
+        return await replyToLINE(event.replyToken, "這是您的報名紀錄：", flex, env);
       }
       return await replyToLINE(event.replyToken, "目前查無報名紀錄。", null, env);
     } catch (e) {
@@ -54,13 +56,18 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // 4. 開啟選單
+  // 4. 開啟選單 (修正 Flex 顯示問題)
   if (userMessage === '我想看課程' || userMessage === '課程列表') {
     try {
       const cats = await getCourseCategories(env);
-      return await replyToLINE(event.replyToken, "請選擇感興趣的課程類別：", generateCategoryFlexMessage(cats), env);
+      const flex = generateCategoryFlexMessage(cats);
+      // 如果 Flex 產生失敗或為空，則顯示純文字
+      if (!flex) {
+        return await replyToLINE(event.replyToken, "目前沒有可選的課程類別。", null, env);
+      }
+      return await replyToLINE(event.replyToken, "請選擇課程類型：", flex, env);
     } catch (e) {
-      return await replyToLINE(event.replyToken, "無法讀取課程列表。", null, env);
+      return await replyToLINE(event.replyToken, "讀取選單失敗，請稍後再試。", null, env);
     }
   }
 
@@ -70,12 +77,13 @@ export async function handleAIRequest(event, env) {
     try {
       const courses = await getCourseList(catName, env);
       if (courses && courses.length > 0) {
-        return await replyToLINE(event.replyToken, `以下是 ${catName} 的課程：`, generateCourseFlexMessage(courses), env);
+        const flex = generateCourseFlexMessage(courses);
+        return await replyToLINE(event.replyToken, `以下是 ${catName} 的課程細項：`, flex, env);
       }
     } catch (e) {}
   }
 
-  // AI 閒聊 (OpenAI)
+  // AI 客服 (OpenAI)
   try {
     const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: 'POST',
@@ -100,10 +108,32 @@ export async function handleAIRequest(event, env) {
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
   const messages = [];
-  if (text) messages.push({ type: 'text', text });
-  if (flexMessage) messages.push(flexMessage);
+  if (text) {
+    messages.push({ type: 'text', text: text });
+  }
   
-  return await fetch('https://api.line.me/v2/bot/message/reply', {
+  // 確保 flexMessage 存在且格式正確
+  if (flexMessage) {
+    // 如果 flexMessage 本身已經包含了 type: 'flex' 則直接推入，否則包裹一層
+    if (flexMessage.type === 'flex') {
+      messages.push(flexMessage);
+    } else if (flexMessage.contents) {
+      messages.push({
+        type: 'flex',
+        altText: '選單內容',
+        contents: flexMessage.contents
+      });
+    } else {
+      // 如果 template 直接回傳了 contents 結構
+      messages.push({
+        type: 'flex',
+        altText: '選單內容',
+        contents: flexMessage
+      });
+    }
+  }
+  
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 
       'Content-Type': 'application/json', 
@@ -111,4 +141,6 @@ async function replyToLINE(replyToken, text, flexMessage, env) {
     },
     body: JSON.stringify({ replyToken, messages })
   });
+  
+  return res;
 }
