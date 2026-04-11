@@ -24,6 +24,7 @@ export async function getUserOrders(lineUid, env) {
   } catch (e) { return []; }
 }
 
+// 補上這個遺漏的關鍵函式，Worker 就不會再當機了！
 export async function getUserProfile(lineUid, env) {
   try {
     const url = `${env.APPS_SCRIPT_URL}?action=getUserProfile&lineUid=${lineUid}`;
