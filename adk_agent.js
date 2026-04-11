@@ -32,7 +32,6 @@ export async function handleAIRequest(event, env) {
   if (cancelMatch) {
     const orderId = cancelMatch[1].trim();
     try {
-      // 在取消前先取得原金額
       const orders = await getUserOrders(userId, env);
       const targetOrder = orders.find(o => o.orderId === orderId);
       const cancelAmount = targetOrder ? targetOrder.amount : 0;
@@ -58,8 +57,14 @@ export async function handleAIRequest(event, env) {
     }
   }
 
+  // --- 4. 課程首頁 (加入 TG 測試推播) ---
   if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
+    
+    // 【強制測試】只要點擊查看課程，就立刻發送 Telegram 通知
+    const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+    await sendTelegramMessage(`🔔 TG推播測試成功\n__________________\n\n有人在 LINE 點擊了「${userMessage}」\n時間 : ${now}`, env);
+
     return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
   }
 
@@ -74,7 +79,7 @@ export async function handleAIRequest(event, env) {
 
   const requestBody = {
     model: "gpt-4o",
-    messages: [{ role: "system", content: "你是專業課程客服。模擬 LINE OA 原生資訊流格式，不包框、不加粗字。" }, { role: "user", content: userMessage }],
+    messages: [{ role: "system", content: "你是專業客服。模擬 LINE OA 原生格式，不包框、不加粗字。" }, { role: "user", content: userMessage }],
     tool_choice: "auto"
   };
 
