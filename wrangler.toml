@@ -1,20 +1,9 @@
-export async function sendTelegramMessage(text, env) {
-  const botToken = "8561025338:AAHEX9eFJl3hDqXCZORXJ-4SNuLIB8z89gs";
-  // 如果是全新群組，請將下方數字替換為你新查到的 Chat ID
-  const chatId = "-5283526670";
+name = "lifeupgrade"
+main = "index.js"
+compatibility_date = "2024-04-10"
 
-  const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-  
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: text
-      })
-    });
-  } catch (error) {
-    console.error("TG Error:", error);
-  }
-}
+[vars]
+WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
+TELEGRAM_CHAT_ID = "-5283526670"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwWIWn8-J7sMzvzyKVW16r7p1_C937v_m4S5B6pYF4hXF6XF6X/exec"
+# 絕對不要在這裡放 TELEGRAM_BOT_TOKEN，會被 GitHub 攔截！請到 Cloudflare 後台設定
