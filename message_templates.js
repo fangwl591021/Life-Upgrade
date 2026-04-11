@@ -17,7 +17,7 @@ export function generateOrderListFlexMessage(orders) {
       { type: "button", action: { type: "message", label: "取消報名", text: "我想取消報名 (單號:" + order.orderId + ")" }, style: "secondary", height: "md" }
     ]}
   }));
-  return { type: "flex", altText: "您的預約報名紀錄", contents: { type: "carousel", contents: bubbles } };
+  return { type: "flex", altText: "您的預約紀錄", contents: { type: "carousel", contents: bubbles } };
 }
 
 export function generateCategoryFlexMessage(categories) {
@@ -32,7 +32,7 @@ export function generateCategoryFlexMessage(categories) {
       { type: "button", action: { type: "message", label: "查看課程", text: "我想查詢 " + category + " 的課程" }, style: "primary", height: "sm", color: "#007AFF" }
     ]}
   }));
-  return { type: "flex", altText: "請選擇課程類別", contents: { type: "carousel", contents: bubbles } };
+  return { type: "flex", altText: "選擇課程類型", contents: { type: "carousel", contents: bubbles } };
 }
 
 export function generateCourseFlexMessage(courses) {
@@ -50,10 +50,10 @@ export function generateCourseFlexMessage(courses) {
     footer: { type: "box", layout: "vertical", spacing: "md", contents: [
       { type: "separator" },
       { type: "box", layout: "horizontal", spacing: "md", contents: [
-        { type: "button", action: { type: "uri", label: "說明 >", uri: "https://liff.line.me/2009130603-ktCTGk6d?id=" + course.id }, style: "link", height: "sm" },
-        { type: "button", action: { type: "message", label: "我要報名", text: "我想預約 " + course.name + " (編號:" + course.id + ", 金額:" + course.price + ")" }, style: "primary", height: "md", color: "#007AFF" }
+        { type: "button", action: { type: "uri", label: "詳情 >", uri: "https://liff.line.me/2009130603-ktCTGk6d?id=" + course.id }, style: "link", height: "sm" },
+        { type: "button", action: { type: "message", label: "報名", text: "我想預約 " + course.name + " (編號:" + course.id + ", 金額:" + course.price + ")" }, style: "primary", height: "md", color: "#007AFF" }
       ]}
     ]}
   }));
-  return { type: "flex", altText: "人生進化 Action 精選課程", contents: { type: "carousel", contents: bubbles } };
+  return { type: "flex", altText: "為您精選課程", contents: { type: "carousel", contents: bubbles } };
 }
