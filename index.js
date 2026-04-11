@@ -21,7 +21,6 @@ export default {
     }
 
     if (request.method === 'POST') {
-      // 專門處理 LIFF 表單送來的發送 Telegram 請求
       if (url.pathname === '/api/notifyPayment') {
         try {
           const payload = await request.json();
@@ -35,7 +34,6 @@ export default {
         }
       }
 
-      // LINE Webhook 事件
       try {
         const clonedRequest = request.clone();
         const body = await request.json();
@@ -99,7 +97,7 @@ async function handleLiffPayment(url, env, workerUrl) {
           <button type="submit" class="btn" id="subBtn">確認送出回報</button>
         </form>
       </div>
-      <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"><\/script>
+      <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         const oid = "${orderId}";
         const gasUrl = "${env.APPS_SCRIPT_URL}";
@@ -115,7 +113,6 @@ async function handleLiffPayment(url, env, workerUrl) {
             fetch(gasUrl + "?action=getUserProfile&lineUid=" + userId).then(r => r.json())
           ]);
           
-          // 【已取消防呆機制】：只抓取未被取消的訂單
           const order = orderRes.data.find(o => o.orderId === oid);
           if (!order) {
             document.getElementById('loading').innerText = '此單號已取消或不存在，無法回報匯款。';
@@ -141,16 +138,12 @@ async function handleLiffPayment(url, env, workerUrl) {
           btn.disabled = true;
           
           const payloadData = {
-            orderId: oid, 
-            name: document.getElementById('name').value, 
-            phone: document.getElementById('phone').value, 
-            last5: document.getElementById('last5').value,
-            courseName: cname,
-            amount: camount
+            orderId: oid, name: document.getElementById('name').value, 
+            phone: document.getElementById('phone').value, last5: document.getElementById('last5').value,
+            courseName: cname, amount: camount
           };
 
           try {
-            // 第一步：使用 text/plain 繞過 CORS 直接寫入 GAS
             const gasRes = await fetch(gasUrl, { 
               method: 'POST', 
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -159,13 +152,11 @@ async function handleLiffPayment(url, env, workerUrl) {
             const gasResult = await gasRes.json();
             
             if (gasResult.status === 'success') { 
-              // 第二步：寫入成功後，呼叫 Worker 發送 Telegram
               await fetch(workerUrl + '/api/notifyPayment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payloadData)
               });
-              
               alert('回報完成！期待與您見面。✨'); 
               liff.closeWindow(); 
             } else { 
@@ -177,7 +168,7 @@ async function handleLiffPayment(url, env, workerUrl) {
             btn.disabled = false;
           }
         };
-      <\/script>
+      </script>
     </body>
     </html>
   `;
@@ -210,7 +201,7 @@ async function handleLiffDescription(url, env) {
         <img id="c-img" src="" /><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div>
       </div>
       <div class="btn-box" id="btn-container" style="display:none;"><button class="btn" onclick="liff.closeWindow()">關閉</button></div>
-      <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"><\/script>
+      <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
           fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(r=>r.json()).then(res=>{
@@ -226,7 +217,7 @@ async function handleLiffDescription(url, env) {
             }
           });
         });
-      <\/script>
+      </script>
     </body>
     </html>
   `;
