@@ -13,17 +13,11 @@ export async function handleAIRequest(event, env) {
     const courseId = orderMatch[2].trim();
     const amount = parseInt(orderMatch[3]);
     try {
-      // 呼叫 GAS 建立訂單 (包含防重機制)
       await createOrder(userId, courseId, amount, env);
-      
-      // 立即抓取訂單清單，準備回傳卡片
       const orders = await getUserOrders(userId, env);
       const flexMessage = generateOrderListFlexMessage(orders);
-      
-      // 溫暖的接待語
       const welcomeText = "感謝您的預約！請點擊下方按鈕完成匯款回報，期待在課程中與您相見歡，一起探索生命的無限可能！";
 
-      // Telegram 內部通知
       const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       await sendTelegramMessage(`🛎️ 新預約申請\n👤 UID: ${userId}\n📚 課程: ${courseName}\n💰 金額: ${amount}\n⏰ 時間: ${now}`, env);
 
@@ -43,7 +37,6 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // 課程列表與分類 (略...)
   if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
