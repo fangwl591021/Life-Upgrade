@@ -1,6 +1,5 @@
 import { handleAIRequest } from './adk_agent.js';
 import { forwardToWP } from './wp_proxy_handler.js';
-import { sendTelegramMessage } from './telegram_notifier.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -11,64 +10,32 @@ export default {
       return handleLiffDescription(url, env);
     }
 
-    if (request.method === 'POST') {
-      // 1. 攔截 LIFF 的匯款回報 API，確保發送 Telegram 通知
-      if (url.pathname === '/api/reportPayment') {
-        try {
-          const payload = await request.json();
-          // 將資料轉發給 GAS 寫入
-          const gasRes = await fetch(env.APPS_SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'reportPayment', data: payload })
-          });
-          const gasResult = await gasRes.json();
+    if (request.method !== 'POST') return new Response('Running', { status: 200 });
 
-          if (gasResult.status === 'success') {
-            // 寫入成功後，由 Cloudflare Worker 發送 TG 匯款通知
-            const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-            const tgText = `✅ 匯款回報成功通知\n__________________\n\n🆔 訂單編號 : ${payload.orderId}\n👤 學員姓名 : ${payload.name}\n📞 聯絡電話 : ${payload.phone}\n📚 課程名稱 : ${payload.courseName || "未知"}\n🏪 店家帳號 : kelly\n💰 報名金額 : ${payload.amount || 0} 元\n🔢 帳號末五碼 : ${payload.last5}\n🗓️ 回報時間 : ${now}`;
-            await sendTelegramMessage(tgText, env);
-            return new Response(JSON.stringify({ status: 'success' }), { headers: { 'Content-Type': 'application/json' } });
-          } else {
-            return new Response(JSON.stringify({ status: 'error', message: '寫入失敗' }), { headers: { 'Content-Type': 'application/json' } });
-          }
-        } catch (e) {
-          return new Response(JSON.stringify({ status: 'error', message: e.toString() }), { headers: { 'Content-Type': 'application/json' } });
-        }
-      }
+    try {
+      const clonedRequest = request.clone();
+      const body = await request.json();
+      if (!body.events || body.events.length === 0) return new Response('OK');
 
-      // 2. 處理原本的 LINE Webhook 事件
-      try {
-        const clonedRequest = request.clone();
-        const body = await request.json();
-        if (!body.events || body.events.length === 0) return new Response('OK');
-
-        for (const event of body.events) {
-          if (event.type === 'message' && event.message.type === 'text') {
-            const text = event.message.text.trim();
-            const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
-            if (aiKeywords.some(k => text.includes(k))) {
-              ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
-              ctx.waitUntil(handleAIRequest(event, env));
-            } else {
-              ctx.waitUntil(forwardToWP(clonedRequest, env));
-            }
+      for (const event of body.events) {
+        if (event.type === 'message' && event.message.type === 'text') {
+          const text = event.message.text.trim();
+          const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
+          if (aiKeywords.some(k => text.includes(k))) {
+            ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
+            ctx.waitUntil(handleAIRequest(event, env));
           } else {
             ctx.waitUntil(forwardToWP(clonedRequest, env));
           }
+        } else {
+          ctx.waitUntil(forwardToWP(clonedRequest, env));
         }
-        return new Response('OK');
-      } catch (e) { return new Response('OK'); }
-    }
-
-    return new Response('Running', { status: 200 });
+      }
+      return new Response('OK');
+    } catch (e) { return new Response('OK'); }
   }
 };
 
-/**
- * 匯款回報表單 LIFF：將發送對象改為 Worker 的 /api/reportPayment
- */
 async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
   const html = `
@@ -109,7 +76,7 @@ async function handleLiffPayment(url, env) {
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         const oid = "${orderId}";
-        const gas = "${env.APPS_SCRIPT_URL}";
+        const gasUrl = "${env.APPS_SCRIPT_URL}";
         let cname = "";
         let camount = 0;
 
@@ -117,8 +84,8 @@ async function handleLiffPayment(url, env) {
           if (!liff.isLoggedIn()) { liff.login(); return; }
           const userId = liff.getDecodedIDToken().sub;
           const [orderRes, userRes] = await Promise.all([
-            fetch(gas + "?action=getUserOrders&lineUid=" + userId).then(r => r.json()),
-            fetch(gas + "?action=getUserProfile&lineUid=" + userId).then(r => r.json())
+            fetch(gasUrl + "?action=getUserOrders&lineUid=" + userId).then(r => r.json()),
+            fetch(gasUrl + "?action=getUserProfile&lineUid=" + userId).then(r => r.json())
           ]);
           const order = orderRes.data.find(o => o.orderId === oid);
           if (order) {
@@ -139,22 +106,35 @@ async function handleLiffPayment(url, env) {
           e.preventDefault();
           const btn = document.getElementById('subBtn');
           btn.disabled = true;
-          // 將回報請求打給 Worker 的 /api/reportPayment
-          const res = await fetch('/api/reportPayment', { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              orderId: oid, 
-              name: document.getElementById('name').value, 
-              phone: document.getElementById('phone').value, 
-              last5: document.getElementById('last5').value,
-              courseName: cname,
-              amount: camount
-            })
-          });
-          const result = await res.json();
-          if (result.status === 'success') { alert('回報完成！期待與您見面。✨'); liff.closeWindow(); }
-          else { alert('回報失敗，請重試。'); btn.disabled = false; }
+          try {
+            // 直接打給 GAS，確保資料寫入與通知觸發
+            const res = await fetch(gasUrl, { 
+              method: 'POST', 
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'reportPayment',
+                data: { 
+                  orderId: oid, 
+                  name: document.getElementById('name').value, 
+                  phone: document.getElementById('phone').value, 
+                  last5: document.getElementById('last5').value,
+                  courseName: cname,
+                  amount: camount
+                }
+              })
+            });
+            const result = await res.json();
+            if (result.status === 'success') { 
+              alert('回報完成！期待與您見面。✨'); 
+              liff.closeWindow(); 
+            } else { 
+              alert('回報失敗，請重試。'); 
+              btn.disabled = false; 
+            }
+          } catch (err) {
+            alert('連線錯誤，請稍後再試。');
+            btn.disabled = false;
+          }
         };
       </script>
     </body>
