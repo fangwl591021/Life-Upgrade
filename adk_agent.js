@@ -34,16 +34,21 @@ export async function handleAIRequest(event, env) {
   if (cancelMatch) {
     const orderId = cancelMatch[1].trim();
     try {
+      // 在取消前先取得訂單資料，以便通知使用
+      const orders = await getUserOrders(userId, env);
+      const targetOrder = orders.find(o => o.orderId === orderId);
+      const cancelAmount = targetOrder ? targetOrder.amount : 0;
+
       await fetch(env.APPS_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
       });
       
       const profile = await getUserProfile(userId, env);
       const displayName = (profile && profile.name) ? profile.name : `UID: ${userId}`;
       const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-      await sendTelegramMessage(`🗑️ 取消預約通知\n__________________\n\n🆔 訂單單號 : ${orderId}\n👤 取消學員 : ${displayName}\n⏰ 取消時間 : ${now}`, env);
+      await sendTelegramMessage(`🗑️ 取消預約通知\n__________________\n\n🆔 訂單單號 : ${orderId}\n👤 取消學員 : ${displayName}\n💰 原始金額 : ${cancelAmount} 元\n⏰ 取消時間 : ${now}`, env);
       
       return await replyToLINE(event.replyToken, `已成功為您取消單號 ${orderId} 的預約紀錄。`, null, env);
     } catch (e) { return await replyToLINE(event.replyToken, "取消失敗，請聯繫客服。", null, env); }
