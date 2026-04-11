@@ -5,7 +5,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // GET 路由：處理 LIFF 表單
+    // 處理 GET：顯示 LIFF 頁面
     if (request.method === 'GET') {
       if (url.searchParams.has('orderId')) return handleLiffPayment(url, env);
       return handleLiffDescription(url, env);
@@ -38,7 +38,7 @@ export default {
 };
 
 /**
- * 匯款回報表單 LIFF
+ * 匯款回報表單 LIFF (支援自動帶入註冊資料、隱藏身分證)
  */
 async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
@@ -48,7 +48,7 @@ async function handleLiffPayment(url, env) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>匯款回報</title>
+      <title>回報匯款資訊</title>
       <style>
         body { font-family: -apple-system, sans-serif; margin: 0; background: #f4f7f9; color: #333; padding-bottom: 40px; }
         .header { background: #1DB446; color: white; padding: 25px 20px; text-align: center; }
@@ -61,33 +61,29 @@ async function handleLiffPayment(url, env) {
       </style>
     </head>
     <body>
-      <div class="header">
-        <div style="font-size: 20px; font-weight: bold;">回報匯款資訊</div>
-      </div>
+      <div class="header"><div style="font-size: 20px; font-weight: bold;">回報匯款資訊</div></div>
       <div class="container">
-        <div id="loading" style="text-align:center; padding: 50px; color:#999;">檢查資料中...</div>
+        <div id="loading" style="text-align:center; padding: 50px; color:#999;">正在檢查註冊資料...</div>
         <form id="payForm" style="display:none;">
           <div class="card">
-            <div class="label">訂單單號</div>
-            <div class="value" id="d-oid"></div>
-            <div class="label">報名課程</div>
-            <div class="value" id="d-name"></div>
+            <div class="label">訂單單號</div><div class="value" id="d-oid"></div>
+            <div class="label">報名課程</div><div class="value" id="d-name"></div>
           </div>
           <div class="card">
-            <div class="label">學員姓名</div>
-            <input type="text" id="name" required />
-            <div class="label">聯絡電話</div>
-            <input type="tel" id="phone" required />
-            <div class="label">匯款帳號末五碼</div>
-            <input type="number" id="last5" pattern="[0-9]*" inputmode="numeric" required />
+            <div class="label">學員姓名</div><input type="text" id="name" required />
+            <div class="label">聯絡電話</div><input type="tel" id="phone" required />
+            <div class="label">匯款帳號末五碼</div><input type="number" id="last5" pattern="[0-9]*" inputmode="numeric" required />
           </div>
-          <button type="submit" class="btn" id="subBtn">確認送出</button>
+          <button type="submit" class="btn" id="subBtn">確認送出回報</button>
         </form>
       </div>
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         const oid = "${orderId}";
         const gas = "${env.APPS_SCRIPT_URL}";
+        let cname = "";
+        let camount = 0;
+
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(async () => {
           if (!liff.isLoggedIn()) { liff.login(); return; }
           const userId = liff.getDecodedIDToken().sub;
@@ -97,6 +93,8 @@ async function handleLiffPayment(url, env) {
           ]);
           const order = orderRes.data.find(o => o.orderId === oid);
           if (order) {
+            cname = order.courseName;
+            camount = order.amount;
             document.getElementById('d-oid').innerText = order.orderId;
             document.getElementById('d-name').innerText = order.courseName;
             if (userRes.data) {
@@ -105,18 +103,26 @@ async function handleLiffPayment(url, env) {
             }
             document.getElementById('loading').style.display = 'none';
             document.getElementById('payForm').style.display = 'block';
-          }
+          } else { document.getElementById('loading').innerText = '找不到訂單資料'; }
         });
+
         document.getElementById('payForm').onsubmit = async (e) => {
           e.preventDefault();
           const btn = document.getElementById('subBtn');
           btn.disabled = true;
           const res = await fetch(gas, { method: 'POST', body: JSON.stringify({
             action: 'reportPayment',
-            data: { orderId: oid, name: document.getElementById('name').value, phone: document.getElementById('phone').value, last5: document.getElementById('last5').value }
+            data: { 
+              orderId: oid, 
+              name: document.getElementById('name').value, 
+              phone: document.getElementById('phone').value, 
+              last5: document.getElementById('last5').value,
+              courseName: cname,
+              amount: camount
+            }
           })});
           const result = await res.json();
-          if (result.status === 'success') { alert('回報完成！期待課程中相見。'); liff.closeWindow(); }
+          if (result.status === 'success') { alert('回報完成！期待與您見面。'); liff.closeWindow(); }
         };
       </script>
     </body>
@@ -126,7 +132,7 @@ async function handleLiffPayment(url, env) {
 }
 
 /**
- * 課程說明頁面 LIFF (修復 1101)
+ * 課程說明頁面 LIFF (修復 1101 缺失函式)
  */
 async function handleLiffDescription(url, env) {
   let cid = url.searchParams.get('id');
@@ -136,39 +142,31 @@ async function handleLiffDescription(url, env) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>課程詳細說明</title>
+      <title>課程說明</title>
       <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #ffffff; color: #333; }
-        .container { min-height: 100vh; padding-bottom: 80px; }
-        img { width: 100%; height: auto; display: block; background: #eee; min-height: 200px; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: #fff; }
+        .container { padding-bottom: 80px; }
+        img { width: 100%; height: auto; background: #eee; }
         .content { padding: 20px; }
-        h1 { font-size: 24px; margin: 0 0 10px 0; color: #000; }
-        .price { color: #FF0000; font-weight: bold; font-size: 22px; margin-bottom: 20px; }
-        .desc { line-height: 1.8; font-size: 16px; color: #444; border-top: 1px solid #eee; padding-top: 20px; white-space: pre-wrap; }
-        .btn-box { position: fixed; bottom: 0; width: 100%; padding: 15px; box-sizing: border-box; background: white; border-top: 1px solid #eee; }
-        .btn { background: #007AFF; color: white; text-align: center; padding: 14px; border-radius: 10px; border: none; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .price { color: #f00; font-weight: bold; font-size: 22px; margin: 10px 0; }
+        .desc { line-height: 1.7; white-space: pre-wrap; color: #444; border-top: 1px solid #eee; padding-top: 15px; }
+        .btn-box { position: fixed; bottom: 0; width: 100%; padding: 15px; background: #fff; border-top: 1px solid #eee; box-sizing: border-box; }
+        .btn { background: #007AFF; color: #fff; text-align: center; padding: 14px; border-radius: 10px; border: none; width: 100%; font-weight: bold; cursor: pointer; }
       </style>
     </head>
     <body>
-      <div class="container">
-        <div id="loading" style="padding: 100px 20px; text-align: center; color: #999;">讀取中...</div>
-        <div id="app" style="display:none;">
-          <img id="c-img" src="" />
-          <div class="content">
-            <h1 id="c-name"></h1>
-            <div class="price" id="c-price"></div>
-            <div id="c-desc" class="desc"></div>
-          </div>
-        </div>
+      <div id="loading" style="padding: 100px 20px; text-align: center; color: #999;">讀取中...</div>
+      <div id="app" style="display:none;">
+        <img id="c-img" src="" /><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div>
       </div>
       <div class="btn-box" id="btn-container" style="display:none;"><button class="btn" onclick="liff.closeWindow()">關閉</button></div>
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
-          fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(res=>res.json()).then(res=>{
+          fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(r=>r.json()).then(res=>{
             const c = res.data.find(x => x.id === "${cid}");
             if(c){
-              document.getElementById('c-img').src = c.imageUrl || "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png";
+              document.getElementById('c-img').src = c.imageUrl || "";
               document.getElementById('c-name').innerText = c.name;
               document.getElementById('c-price').innerText = "NT $" + c.price + " 起";
               document.getElementById('c-desc').innerText = c.description;
