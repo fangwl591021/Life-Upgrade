@@ -33,13 +33,3 @@ export async function createOrder(lineUid, courseId, amount, env) {
     });
   } catch (e) {}
 }
-
-export async function cancelOrder(orderId, env) {
-  try {
-    await fetch(env.APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
-    });
-  } catch (e) {}
-}
