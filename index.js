@@ -1,12 +1,11 @@
 import { handleAIRequest } from './adk_agent.js';
 import { forwardToWP } from './wp_proxy_handler.js';
-import { sendTelegramMessage } from './telegram_notifier.js';
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 處理 GET 請求：課程說明 (/description) 或 匯款回報 (/payment)
+    // 處理 GET 請求：顯示課程說明頁或匯款回報表單
     if (request.method === 'GET') {
       if (url.pathname === '/payment') {
         return handleLiffPayment(url, env);
@@ -29,6 +28,8 @@ export default {
       for (const event of body.events) {
         if (event.type === 'message' && event.message.type === 'text') {
           const text = event.message.text.trim();
+          
+          // 攔截 AI 關鍵字，確保流程不跑去 WordPress
           const aiKeywords = ['預約', '上課', '課程', '階段', '工作坊', '清單', '編號:', '哪些', '報名', '紀錄', '查', '訂單'];
           const isAIIntent = aiKeywords.some(keyword => text.includes(keyword));
 
@@ -51,7 +52,7 @@ export default {
 };
 
 /**
- * 匯款回報表單 LIFF (支援補全註冊資料)
+ * 匯款回報與資料補全表單 (LIFF)
  */
 async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
@@ -67,50 +68,45 @@ async function handleLiffPayment(url, env) {
         .header { background: #1DB446; color: white; padding: 20px; text-align: center; }
         .container { padding: 20px; }
         .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .label { font-size: 14px; color: #666; margin-bottom: 8px; }
+        .label { font-size: 14px; color: #666; margin-bottom: 8px; font-weight: bold; }
         input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; margin-bottom: 15px; }
-        .readonly-val { font-weight: bold; margin-bottom: 15px; font-size: 16px; }
+        .readonly-val { font-weight: bold; margin-bottom: 15px; font-size: 16px; color: #000; }
         .btn { background: #007AFF; color: white; text-align: center; padding: 15px; border-radius: 10px; border: none; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; }
         .btn:disabled { background: #ccc; }
-        .notice { font-size: 12px; color: #999; line-height: 1.5; }
+        .notice { font-size: 12px; color: #999; line-height: 1.5; margin-top: 10px; }
       </style>
     </head>
     <body>
       <div class="header">
         <div style="font-size: 20px; font-weight: bold;">匯款回報</div>
-        <div style="font-size: 14px; opacity: 0.8; margin-top: 5px;">請提供資訊以便財務人員核對</div>
+        <div style="font-size: 14px; opacity: 0.8; margin-top: 5px;">請填寫資訊以便我們為您核對</div>
       </div>
       <div class="container">
-        <div id="loading" style="text-align:center; padding: 40px; color:#999;">正在讀取訂單資訊...</div>
+        <div id="loading" style="text-align:center; padding: 40px; color:#999;">正在載入訂單...</div>
         <form id="paymentForm" style="display:none;">
           <div class="card">
             <div class="label">訂單編號</div>
             <div class="readonly-val" id="disp-orderId"></div>
-            <div class="label">報名課程</div>
+            <div class="label">課程名稱</div>
             <div class="readonly-val" id="disp-courseName"></div>
-            <div class="label">應付金額</div>
-            <div class="readonly-val" id="disp-amount"></div>
           </div>
           
           <div class="card">
-            <div class="label">學員姓名 (必填)</div>
-            <input type="text" id="userName" placeholder="請輸入您的真實姓名" required />
+            <div class="label">學員真實姓名</div>
+            <input type="text" id="userName" placeholder="請輸入姓名" required />
             
-            <div class="label">聯絡電話 (必填)</div>
-            <input type="tel" id="userPhone" placeholder="請輸入聯絡手機" required />
+            <div class="label">聯絡手機</div>
+            <input type="tel" id="userPhone" placeholder="請輸入電話" required />
 
-            <div class="label">身分證字號 (保險及行政使用)</div>
+            <div class="label">身分證字號 (保險行政用)</div>
             <input type="text" id="userIdCard" placeholder="請輸入身分證字號" required />
             
-            <div class="label">匯款帳號末五碼 (必填)</div>
-            <input type="number" id="last5" placeholder="請輸入末 5 位數字" pattern="[0-9]*" inputmode="numeric" required />
+            <div class="label">匯款帳號末 5 碼</div>
+            <input type="number" id="last5" placeholder="請輸入末五碼" pattern="[0-9]*" inputmode="numeric" required />
           </div>
 
-          <div class="notice">
-            ※ 若您已完成匯款，請填寫以上資訊。提交後系統將由專人於 1-2 個工作天內核對並更新訂單狀態。
-          </div>
-          <br>
-          <button type="submit" class="btn" id="submitBtn">提交回報</button>
+          <button type="submit" class="btn" id="submitBtn">提交回報資訊</button>
+          <div class="notice">提交後，我們將於 1-2 個工作天內核對並更新訂單狀態。</div>
         </form>
       </div>
 
@@ -118,8 +114,6 @@ async function handleLiffPayment(url, env) {
       <script>
         const orderId = "${orderId}";
         const gasUrl = "${env.APPS_SCRIPT_URL}";
-        let currentCourseName = "";
-        let currentAmount = 0;
 
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
           if (!liff.isLoggedIn()) { liff.login(); return; }
@@ -130,15 +124,12 @@ async function handleLiffPayment(url, env) {
             .then(res => {
               const order = res.data.find(o => o.orderId === orderId);
               if (order) {
-                currentCourseName = order.courseName;
-                currentAmount = order.amount;
                 document.getElementById('disp-orderId').innerText = order.orderId;
                 document.getElementById('disp-courseName').innerText = order.courseName;
-                document.getElementById('disp-amount').innerText = "NT$ " + order.amount;
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('paymentForm').style.display = 'block';
               } else {
-                document.getElementById('loading').innerText = '找不到訂單資料，請確認後再試。';
+                document.getElementById('loading').innerText = '找不到訂單資料。';
               }
             });
         });
@@ -146,44 +137,33 @@ async function handleLiffPayment(url, env) {
         document.getElementById('paymentForm').onsubmit = async (e) => {
           e.preventDefault();
           const btn = document.getElementById('submitBtn');
-          const name = document.getElementById('userName').value;
-          const phone = document.getElementById('userPhone').value;
-          const last5 = document.getElementById('last5').value;
-
           btn.disabled = true;
-          btn.innerText = '正在提交...';
+          btn.innerText = '提交中...';
 
           const payload = {
             action: 'reportPayment',
             data: {
               orderId: orderId,
-              name: name,
-              phone: phone,
+              name: document.getElementById('userName').value,
+              phone: document.getElementById('userPhone').value,
               idCard: document.getElementById('userIdCard').value,
-              last5: last5,
-              courseName: currentCourseName, // 用於發送 Telegram 通知
-              amount: currentAmount
+              last5: document.getElementById('last5').value
             }
           };
 
           try {
-            const res = await fetch(gasUrl, {
-              method: 'POST',
-              body: JSON.stringify(payload)
-            });
+            const res = await fetch(gasUrl, { method: 'POST', body: JSON.stringify(payload) });
             const result = await res.json();
             if (result.status === 'success') {
-              // 提交成功後，由前端發送通知訊息給 Worker 以轉發 Telegram
-              // 或者我們在這裡直接呼叫 Cloudflare Worker 的另一個路徑來發送詳盡通知
-              alert('提交成功！我們將盡快為您核對。');
+              alert('提交成功！期待與您相見歡。');
               liff.closeWindow();
             } else {
               alert('提交失敗：' + result.message);
               btn.disabled = false;
-              btn.innerText = '提交回報';
+              btn.innerText = '提交回報資訊';
             }
           } catch (err) {
-            alert('系統錯誤，請連繫客服。');
+            alert('系統錯誤，請稍後再試。');
             btn.disabled = false;
           }
         };
