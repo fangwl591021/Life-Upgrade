@@ -13,7 +13,7 @@ export async function handleAIRequest(event, env) {
       await createOrder(userId, courseId, amount, env);
       const orders = await getUserOrders(userId, env);
       return await replyToLINE(event.replyToken, '感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳', generateOrderListFlexMessage(orders), env);
-    } catch (e) { return await replyToLINE(event.replyToken, '預約系統忙碌中，請稍後再試。', null, env); }
+    } catch (e) { return await replyToLINE(event.replyToken, '系統忙碌中，請稍後再試。', null, env); }
   }
 
   const cancelMatch = userMessage.match(/我想取消報名\s*\(單號\s*[:：]\s*(.+?)\)/);
@@ -48,7 +48,7 @@ export async function handleAIRequest(event, env) {
   const requestBody = {
     model: "gpt-4o",
     messages: [
-      { role: "system", content: "你是專業客服。模擬 LINE 原生資訊流格式，不包框、不加粗、親切。" },
+      { role: "system", content: "你是專業客服。模擬 LINE 原生資訊流格式，不包框、不加粗、親切、精確。" },
       { role: "user", content: userMessage }
     ]
   };
