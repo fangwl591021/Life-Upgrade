@@ -1,6 +1,5 @@
 import { handleAIRequest } from './adk_agent.js';
 import { forwardToWP } from './wp_proxy_handler.js';
-import { sendTelegramMessage } from './telegram_notifier.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,29 +10,15 @@ const corsHeaders = {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const workerUrl = url.origin;
 
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
     if (request.method === 'GET') {
-      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env, workerUrl);
+      if (url.searchParams.has('orderId')) return handleLiffPayment(url, env);
       return handleLiffDescription(url, env);
     }
 
     if (request.method === 'POST') {
-      if (url.pathname === '/api/notifyPayment') {
-        try {
-          const payload = await request.json();
-          const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-          const tgText = `✅ 匯款回報成功通知\n__________________\n\n🆔 訂單編號 : ${payload.orderId}\n👤 學員姓名 : ${payload.name}\n📞 聯絡電話 : ${payload.phone}\n📚 課程名稱 : ${payload.courseName || "未知"}\n🏪 店家帳號 : kelly\n💰 報名金額 : ${payload.amount || 0} 元\n🔢 帳號末五碼 : ${payload.last5}\n🗓️ 回報時間 : ${now}`;
-          
-          await sendTelegramMessage(tgText, env);
-          return new Response(JSON.stringify({ status: 'success' }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-        } catch(e) {
-          return new Response(JSON.stringify({ status: 'error' }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-        }
-      }
-
       try {
         const clonedRequest = request.clone();
         const body = await request.json();
@@ -44,7 +29,6 @@ export default {
             const text = event.message.text.trim();
             const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
             if (aiKeywords.some(k => text.includes(k))) {
-              ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
               ctx.waitUntil(handleAIRequest(event, env));
             } else {
               ctx.waitUntil(forwardToWP(clonedRequest, env));
@@ -60,113 +44,80 @@ export default {
   }
 };
 
-async function handleLiffPayment(url, env, workerUrl) {
+async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>匯款回報資訊</title>
+      <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>匯款回報</title>
       <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #f4f7f9; color: #333; padding-bottom: 40px; }
-        .header { background: #1DB446; color: white; padding: 25px 20px; text-align: center; }
+        body { font-family: sans-serif; margin: 0; background: #f4f7f9; color: #333; }
+        .header { background: #1DB446; color: white; padding: 25px; text-align: center; }
         .container { padding: 15px; max-width: 500px; margin: auto; }
         .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 15px; }
-        .label { font-size: 14px; color: #000; margin-bottom: 5px; font-weight: bold; }
-        .value { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #000; }
-        input { width: 100%; padding: 14px; border: 1px solid #e0e0e0; border-radius: 10px; box-sizing: border-box; font-size: 16px; margin-bottom: 15px; background: #fafafa; color: #000; }
-        .btn { background: #007AFF; color: white; text-align: center; padding: 16px; border-radius: 12px; border: none; width: 100%; font-size: 17px; font-weight: bold; cursor: pointer; }
+        .label { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+        .value { font-size: 16px; margin-bottom: 15px; }
+        input { width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; box-sizing: border-box; margin-bottom: 15px; }
+        .btn { background: #007AFF; color: white; padding: 16px; border-radius: 12px; border: none; width: 100%; font-size: 17px; font-weight: bold; cursor: pointer; }
       </style>
     </head>
     <body>
-      <div class="header"><div style="font-size: 20px; font-weight: bold;">回報匯款資訊</div></div>
+      <div class="header">回報匯款資訊</div>
       <div class="container">
-        <div id="loading" style="text-align:center; padding: 50px; color:#000; font-weight:bold; font-size:18px;">檢查資料中...</div>
+        <div id="loading" style="text-align:center; padding: 50px;">檢查資料中...</div>
         <form id="payForm" style="display:none;">
           <div class="card">
             <div class="label">訂單單號</div><div class="value" id="d-oid"></div>
             <div class="label">報名課程</div><div class="value" id="d-name"></div>
           </div>
           <div class="card">
-            <div class="label">學員真實姓名</div><input type="text" id="name" required />
+            <div class="label">真實姓名</div><input type="text" id="name" required />
             <div class="label">聯絡電話</div><input type="tel" id="phone" required />
-            <div class="label">匯款帳號末五碼</div><input type="number" id="last5" pattern="[0-9]*" inputmode="numeric" required />
+            <div class="label">帳號末五碼</div><input type="number" id="last5" required />
           </div>
-          <button type="submit" class="btn" id="subBtn">確認送出回報</button>
+          <button type="submit" class="btn" id="subBtn">送出回報</button>
         </form>
       </div>
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         const oid = "${orderId}";
-        const gasUrl = "${env.APPS_SCRIPT_URL}";
-        const workerUrl = "${workerUrl}";
-        let cname = "";
-        let camount = 0;
-
+        const gas = "${env.APPS_SCRIPT_URL}";
+        let cname = ""; let camount = 0;
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(async () => {
           if (!liff.isLoggedIn()) { liff.login(); return; }
           const userId = liff.getDecodedIDToken().sub;
-          const [orderRes, userRes] = await Promise.all([
-            fetch(gasUrl + "?action=getUserOrders&lineUid=" + userId).then(r => r.json()),
-            fetch(gasUrl + "?action=getUserProfile&lineUid=" + userId).then(r => r.json())
+          const [oRes, pRes] = await Promise.all([
+            fetch(gas+"?action=getUserOrders&lineUid="+userId).then(r=>r.json()),
+            fetch(gas+"?action=getUserProfile&lineUid="+userId).then(r=>r.json())
           ]);
-          
-          const order = orderRes.data.find(o => o.orderId === oid);
-          if (!order) {
-            document.getElementById('loading').innerText = '此單號已取消或不存在，無法回報匯款。';
-            document.getElementById('loading').style.color = '#FF0000';
-            return;
-          }
-
-          cname = order.courseName;
-          camount = order.amount;
+          const order = oRes.data.find(o => o.orderId === oid);
+          if (!order) { document.getElementById('loading').innerText = '單號已取消或不存在'; return; }
+          cname = order.courseName; camount = order.amount;
           document.getElementById('d-oid').innerText = order.orderId;
           document.getElementById('d-name').innerText = order.courseName;
-          if (userRes.data) {
-            document.getElementById('name').value = userRes.data.name || "";
-            document.getElementById('phone').value = userRes.data.phone || "";
+          if (pRes.data) {
+            document.getElementById('name').value = pRes.data.name || "";
+            document.getElementById('phone').value = pRes.data.phone || "";
           }
           document.getElementById('loading').style.display = 'none';
           document.getElementById('payForm').style.display = 'block';
         });
-
         document.getElementById('payForm').onsubmit = async (e) => {
           e.preventDefault();
-          const btn = document.getElementById('subBtn');
-          btn.disabled = true;
-          
-          const payloadData = {
-            orderId: oid, name: document.getElementById('name').value, 
-            phone: document.getElementById('phone').value, last5: document.getElementById('last5').value,
-            courseName: cname, amount: camount
-          };
-
-          try {
-            const gasRes = await fetch(gasUrl, { 
-              method: 'POST', 
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({ action: 'reportPayment', data: payloadData })
-            });
-            const gasResult = await gasRes.json();
-            
-            if (gasResult.status === 'success') { 
-              await fetch(workerUrl + '/api/notifyPayment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadData)
-              });
-              alert('回報完成！期待與您見面。✨'); 
-              liff.closeWindow(); 
-            } else { 
-              alert(gasResult.message || '回報失敗，此單號可能已被取消。'); 
-              btn.disabled = false; 
-            }
-          } catch(err) {
-            alert('系統連線錯誤，請檢查網路後再試。');
-            btn.disabled = false;
-          }
+          document.getElementById('subBtn').disabled = true;
+          const res = await fetch(gas, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'reportPayment',
+              data: { orderId: oid, name: document.getElementById('name').value, phone: document.getElementById('phone').value, last5: document.getElementById('last5').value, courseName: cname, amount: camount }
+            })
+          });
+          const result = await res.json();
+          if (result.status === 'success') { alert('回報完成！'); liff.closeWindow(); }
+          else { alert('回報失敗'); document.getElementById('subBtn').disabled = false; }
         };
       </script>
     </body>
@@ -180,55 +131,25 @@ async function handleLiffDescription(url, env) {
   const html = `
     <!DOCTYPE html>
     <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>課程說明</title>
-      <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #fff; }
-        .container { padding-bottom: 80px; }
-        img { width: 100%; height: auto; background: #eee; }
-        .content { padding: 20px; }
-        .price { color: #f00; font-weight: bold; font-size: 22px; margin: 10px 0; }
-        .desc { line-height: 1.7; white-space: pre-wrap; color: #000; border-top: 1px solid #eee; padding-top: 15px; font-size: 18px; }
-        .btn-box { position: fixed; bottom: 0; width: 100%; padding: 15px; background: #fff; border-top: 1px solid #eee; box-sizing: border-box; }
-        .btn { background: #007AFF; color: #fff; text-align: center; padding: 14px; border-radius: 10px; border: none; width: 100%; font-weight: bold; cursor: pointer; font-size: 18px; }
-      </style>
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>body { font-family: sans-serif; margin: 0; background: #fff; } .container { padding-bottom: 80px; } img { width: 100%; height: auto; background: #eee; } .content { padding: 20px; } .price { color: #f00; font-weight: bold; font-size: 22px; margin: 10px 0; } .desc { line-height: 1.7; white-space: pre-wrap; color: #000; font-size: 18px; } .btn-box { position: fixed; bottom: 0; width: 100%; padding: 15px; background: #fff; box-sizing: border-box; border-top: 1px solid #eee; } .btn { background: #007AFF; color: #fff; text-align: center; padding: 14px; border-radius: 10px; border: none; width: 100%; font-weight: bold; cursor: pointer; font-size: 18px; }</style>
     </head>
     <body>
-      <div id="loading" style="padding: 100px 20px; text-align: center; color: #000; font-size: 18px; font-weight: bold;">讀取中...</div>
-      <div id="app" style="display:none;">
-        <img id="c-img" src="" /><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div>
-      </div>
+      <div id="loading" style="padding: 100px 20px; text-align: center;">讀取中...</div>
+      <div id="app" style="display:none;"><img id="c-img" src="" /><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div></div>
       <div class="btn-box" id="btn-container" style="display:none;"><button class="btn" onclick="liff.closeWindow()">關閉</button></div>
       <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
       <script>
         liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => {
-          // 防呆：如果網址沒有帶 id 參數
-          const courseId = "${cid}";
-          if (!courseId || courseId === "null") {
-            document.getElementById('loading').innerText = '未指定課程！\\n請從 LINE 選單點擊「課程說明」進入。';
-            document.getElementById('loading').style.color = '#FF0000';
-            return;
-          }
-
           fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(r=>r.json()).then(res=>{
-            const c = res.data.find(x => x.id === courseId);
+            const c = res.data.find(x => x.id === "${cid}");
             if(c){
               document.getElementById('c-img').src = c.imageUrl || "";
               document.getElementById('c-name').innerText = c.name;
               document.getElementById('c-price').innerText = "NT $" + c.price + " 起";
               document.getElementById('c-desc').innerText = c.description;
-              document.getElementById('loading').style.display='none';
-              document.getElementById('app').style.display='block';
-              document.getElementById('btn-container').style.display='block';
-            } else {
-              document.getElementById('loading').innerText = '找不到該課程資訊，可能已經下架。';
-              document.getElementById('loading').style.color = '#FF0000';
+              document.getElementById('loading').style.display='none'; document.getElementById('app').style.display='block'; document.getElementById('btn-container').style.display='block';
             }
-          }).catch(err => {
-            document.getElementById('loading').innerText = '系統連線錯誤，請稍後再試。';
-            document.getElementById('loading').style.color = '#FF0000';
           });
         });
       </script>
@@ -236,14 +157,4 @@ async function handleLiffDescription(url, env) {
     </html>
   `;
   return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
-}
-
-async function triggerLoadingAnimation(userId, env) {
-  try {
-    await fetch('https://api.line.me/v2/bot/chat/loading/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
-      body: JSON.stringify({ chatId: userId, loadingSeconds: 5 })
-    });
-  } catch (e) {}
 }
