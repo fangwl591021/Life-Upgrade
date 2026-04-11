@@ -5,4 +5,4 @@ compatibility_date = "2024-04-10"
 [vars]
 WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
 TELEGRAM_CHAT_ID = "-5283526670"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwWIWn8-J7sMzvzyKVW16r7p1_C937v_m4S5B6pYF4hXF6XF6X/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwagu8vsx732zLuYuITLpqHA-aNS0Fz-CeDsBFg8Yi8vPPzsN4wIXmv6R02W4KE7XZRJg/exec"
