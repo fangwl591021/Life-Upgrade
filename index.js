@@ -16,31 +16,27 @@ export default {
     const orderId = url.searchParams.get('orderId');
     const courseIdParam = url.searchParams.get('id');
 
-    // 1. 專屬 Endpoint 優先判定 (確保 LIFF 不會跳進登入頁)
+    // 1. LIFF Endpoint 分流 (優先處理，絕不進入認證流程)
     if (pathname === '/pay') return handleLiffPayment(orderId, env);
     if (pathname === '/desc') return handleLiffDescription(courseIdParam, env);
     if (pathname === '/admin') return handleAdminPage(env);
 
-    // 2. API 代理 (處理資料同步)
+    // 2. API 代理轉發
     if (pathname.startsWith('/api/admin/')) {
       const u = request.headers.get('X-Admin-User');
       const p = request.headers.get('X-Admin-Pass');
       if (u !== env.ADMIN_USERNAME || p !== env.ADMIN_PASSWORD) return new Response('Unauthorized', { status: 401 });
-      const gasUrl = env.APPS_SCRIPT_URL + '?action=' + pathname.replace('/api/admin/', '');
+      const action = pathname.replace('/api/admin/', '');
+      const gasUrl = env.APPS_SCRIPT_URL + '?action=' + action;
       try {
-        const fetchOptions = { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' } };
-        if (request.method === 'GET') {
-          fetchOptions.method = 'GET';
-          delete fetchOptions.body;
-        } else {
-          fetchOptions.body = await request.text();
-        }
+        const fetchOptions = { method: request.method, redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' } };
+        if (request.method === 'POST') { fetchOptions.body = await request.text(); }
         const gasRes = await fetch(gasUrl, fetchOptions);
         return new Response(await gasRes.text(), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       } catch (e) { return new Response(JSON.stringify({status:'error', message: e.toString()}), { status: 500, headers: corsHeaders }); }
     }
 
-    // 3. Webhook 處理
+    // 3. Webhook (AI 分流)
     if (request.method === 'POST') {
       try {
         const bodyText = await request.text();
@@ -74,7 +70,8 @@ function handleStatusPage() {
     '<body class="bg-slate-50 flex items-center justify-center min-h-screen font-sans">',
     '<div class="max-w-md w-full bg-white p-12 rounded-[2.5rem] shadow-xl text-center border border-slate-100">',
     '<h1 class="text-2xl font-bold text-slate-800 mb-6 tracking-tight">人生進化 Action</h1>',
-    '<a href="/admin" class="block bg-blue-600 text-white py-4 rounded-xl font-semibold shadow-lg transition hover:bg-blue-700">管理後台入口</a>',
+    '<p class="text-slate-500 mb-8">系統服務目前運作正常。</p>',
+    '<a href="/admin" class="block bg-blue-600 text-white py-4 rounded-xl font-semibold shadow-lg transition hover:bg-blue-700 text-lg">進入管理系統</a>',
     '</div></body></html>'
   ].join('');
   return new Response(h, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
@@ -83,38 +80,38 @@ function handleStatusPage() {
 async function handleAdminPage(env) {
   const h = [
     '<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">',
-    '<title>PRO 管理後台 - 人生進化 Action</title><script src="https://cdn.tailwindcss.com"></script>',
-    '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:16px}.nav-active{background:#eff6ff;color:#2563eb;font-weight:600}.m-ov{background:rgba(15,23,42,0.6);backdrop-filter:blur(6px)}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:10px}</style></head>',
+    '<title>管理後台 - 人生進化 Action</title><script src="https://cdn.tailwindcss.com"></script>',
+    '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:16px}.nav-active{background:#eff6ff;color:#2563eb;font-weight:600}.m-ov{background:rgba(15,23,42,0.6);backdrop-filter:blur(8px)}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:10px}</style></head>',
     '<body class="bg-slate-50 text-slate-800 min-h-screen flex">',
     '<div id="login-box" class="fixed inset-0 bg-slate-50 flex items-center justify-center z-[70]">',
     '<div class="w-full max-w-sm bg-white p-10 rounded-2xl shadow-xl border border-slate-100 text-center">',
-    '<h1 class="text-2xl font-bold mb-1">人生進化 Action</h1><p class="text-slate-400 text-sm mb-8 uppercase font-medium">Administrator</p>',
+    '<h1 class="text-2xl font-bold mb-1 tracking-tight text-slate-900">人生進化 Action</h1><p class="text-slate-400 text-sm mb-8 uppercase tracking-widest font-medium">Administrator</p>',
     '<div class="space-y-4 text-left">',
-    '<div><label class="text-[11px] font-bold text-slate-400 uppercase ml-1">帳號</label><input type="text" id="admin-user" class="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="Username"></div>',
-    '<div><label class="text-[11px] font-bold text-slate-400 uppercase ml-1">密碼</label><input type="password" id="admin-pw" class="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="Password"></div>',
-    '<button onclick="doLogin()" id="lbtn" class="w-full bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg transition mt-2">登入管理系統</button>',
-    '</div><div id="diag" class="hidden mt-6 p-4 bg-red-50 text-red-700 text-xs text-left rounded-lg font-mono"></div></div></div>',
+    '<div><label class="text-[11px] font-bold text-slate-400 uppercase ml-1">帳號</label><input type="text" id="admin-user" class="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition text-base" placeholder="Username"></div>',
+    '<div><label class="text-[11px] font-bold text-slate-400 uppercase ml-1">密碼</label><input type="password" id="admin-pw" class="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition text-base" placeholder="Password"></div>',
+    '<button onclick="doLogin()" id="lbtn" class="w-full bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg transition mt-2 text-lg">進入管理系統</button>',
+    '</div><div id="diag" class="hidden mt-6 p-4 bg-red-50 text-red-700 text-xs text-left rounded-lg font-mono overflow-auto max-h-40"></div></div></div>',
     '<aside class="w-64 bg-white border-r border-slate-200 flex-none hidden md:flex flex-col">',
-    '<div class="p-6 border-b border-slate-100"><h1 class="text-xl font-bold text-slate-800 tracking-tighter">Action Admin</h1></div>',
+    '<div class="p-6 border-b border-slate-100"><h1 class="text-xl font-bold text-slate-800 tracking-tighter">人生進化 Action</h1></div>',
     '<nav class="flex-1 p-4 space-y-1">',
-    '<button onclick="st(\'dashboard\')" id="n-dashboard" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium">📊 營運統計</button>',
-    '<button onclick="st(\'courses\')" id="n-courses" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium">📖 課程管理</button>',
-    '<button onclick="st(\'orders\')" id="n-orders" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium">📜 訂單中心</button>',
-    '<button onclick="st(\'users\')" id="n-users" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium">👥 會員中心</button>',
-    '</nav><div class="p-6 border-t border-slate-100 text-center"><button onclick="location.reload()" class="text-xs text-slate-400 font-bold hover:text-red-500 uppercase transition tracking-wider">Sign Out</button></div></aside>',
+    '<button onclick="st(\'dashboard\')" id="n-dashboard" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium text-base">📊 營運統計</button>',
+    '<button onclick="st(\'courses\')" id="n-courses" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium text-base">📖 課程管理</button>',
+    '<button onclick="st(\'orders\')" id="n-orders" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium text-base">📜 訂單中心</button>',
+    '<button onclick="st(\'users\')" id="n-users" class="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium text-base">👥 會員資料</button>',
+    '</nav></aside>',
     '<main class="flex-1 flex flex-col min-w-0 overflow-hidden">',
     '<header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">',
-    '<div id="path-display" class="text-sm text-slate-400 font-medium tracking-tight">首頁 / 營運控制中心</div>',
+    '<div id="path-display" class="text-sm text-slate-400 font-medium">首頁 / 營運控制台</div>',
     '<div class="flex items-center space-x-3"><span class="text-sm font-semibold text-slate-700">管理員</span>',
-    '<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border border-blue-200">A</div></div></header>',
+    '<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border border-blue-200 shadow-sm">A</div></div></header>',
     '<section class="p-8 overflow-y-auto flex-1 bg-slate-50/40" id="main-section"></section></main>',
     '<div id="loader" class="hidden fixed inset-0 flex items-center justify-center z-[100] bg-white/60 backdrop-blur-sm"><div class="animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent"></div></div>',
     '<script>',
-    'const State={data:null,tab:"dashboard",u:"",p:"",curId:null};',
+    'const State={data:null,tab:"dashboard",u:"",p:""};',
     'async function doLogin(){',
     'const u=document.getElementById("admin-user").value, p=document.getElementById("admin-pw").value;',
     'const b=document.getElementById("lbtn"), d=document.getElementById("diag");',
-    'b.innerText="Validating Auth..."; d.classList.add("hidden");',
+    'b.innerText="正在驗證..."; d.classList.add("hidden");',
     'try{',
     'const r=await fetch("/api/admin/adminGetData",{headers:{"X-Admin-User":u,"X-Admin-Pass":p}});',
     'const t=await r.text();',
@@ -122,28 +119,28 @@ async function handleAdminPage(env) {
     'const j=JSON.parse(t);',
     'if(r.ok&&j.status==="success"){State.data=j.data; State.u=u; State.p=p; document.getElementById("login-box").classList.add("hidden"); st("dashboard");}',
     'else{alert("認證失敗：帳號或密碼錯誤");}',
-    '}catch(e){d.classList.remove("hidden"); d.innerText="收到無效資料。請檢查 GAS 是否部署為新版本。\\n內容："+t.substring(0,200);}',
-    '}catch(e){alert("連線失敗");}finally{b.innerText="進入管理系統";}',
+    '}catch(e){d.classList.remove("hidden"); d.innerText="連線成功但格式錯誤。請檢查 GAS 是否部署為所有人。\\n內容："+t.substring(0,200);}',
+    '}catch(e){alert("網路連線失敗");}finally{b.innerText="進入管理系統";}',
     '}',
     'function st(t){',
-    'State.tab=t; document.querySelectorAll("aside nav button").forEach(b=>b.className="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium");',
-    'const ab=document.getElementById("n-"+t); if(ab)ab.className="flex items-center w-full p-3 nav-active"; render();',
+    'State.tab=t; document.querySelectorAll("aside nav button").forEach(b=>b.className="flex items-center w-full p-3 text-slate-500 hover:bg-slate-50 rounded-xl transition font-medium text-base");',
+    'const ab=document.getElementById("n-"+t); if(ab)ab.className="flex items-center w-full p-3 nav-active text-base"; render();',
     '}',
     'function render(){',
     'const s=document.getElementById("main-section"); const d=State.data;',
     'if(State.tab==="dashboard"){',
     'const inc=d.orders.filter(o=>o.status==="已確認").reduce((sm,o)=>sm+(parseInt(o.amount)||0),0);',
     'const pend=d.orders.filter(o=>o.status==="待匯款").reduce((sm,o)=>sm+(parseInt(o.amount)||0),0);',
-    's.innerHTML=\'<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">\'+\'<div class="text-slate-400 text-[10px] font-bold uppercase mb-2">實收累計</div><div class="text-2xl font-semibold text-slate-800">$\'+inc.toLocaleString()+\'</div></div>\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><div class="text-slate-400 text-[10px] font-bold uppercase mb-2">待收總額</div><div class="text-2xl font-semibold text-slate-800">$\'+pend.toLocaleString()+\'</div></div>\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><div class="text-slate-400 text-[10px] font-bold uppercase mb-2">預約筆數</div><div class="text-2xl font-semibold text-slate-800">\'+d.orders.length+\'</div></div>\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><div class="text-slate-400 text-[10px] font-bold uppercase mb-2">會員人數</div><div class="text-2xl font-semibold text-slate-800">\'+d.users.length+\'</div></div></div>\'+\'<div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 font-medium font-sans"><h2 class="text-slate-800 mb-6 font-semibold border-l-4 border-blue-600 pl-4 uppercase">課程營收概覽</h2>\'+\'<div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="bg-slate-50 text-[11px] text-slate-500 uppercase font-bold tracking-widest border-b border-slate-100">\'+\'<th class="p-4">課程名稱</th><th class="p-4 text-center">報名數</th><th class="p-4 text-emerald-600">已實收</th><th class="p-4 text-orange-600">待收款</th><th class="p-4">繳費分佈</th></tr></thead><tbody class="text-sm font-medium text-slate-600">\' + d.courses.map(c=>{const ords=d.orders.filter(o=>o.courseName===c.name);return \'<tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors font-medium text-slate-700 text-base"><td class="p-4 font-semibold text-slate-800">\'+c.name+\'</td><td class="p-4 text-center font-semibold">\'+ords.length+\'</td><td class="p-4 text-emerald-600 font-bold">$\'+(ords.filter(o=>o.status==="已確認").reduce((s,o)=>s+(parseInt(o.amount)||0),0)).toLocaleString()+\'</td><td class="p-4 text-orange-500 font-bold">$\'+(ords.filter(o=>o.status==="待匯款").reduce((s,o)=>s+(parseInt(o.amount)||0),0)).toLocaleString()+\'</td><td class="p-4"><div class="flex items-center space-x-3 text-[11px] font-bold uppercase text-slate-400">\'+\'<span class="text-emerald-500">Paid: \'+ords.filter(o=>o.status==="已確認").length+\'</span>\'+\'<span class="text-orange-500">Wait: \'+ords.filter(o=>o.status==="待匯款").length+\'</span></div></td></tr>\'}).join(\'\') + \'</tbody></table></div></div>\';',
+    's.innerHTML=\'<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center">\'+\'<div class="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 mb-3 font-bold">✓</div><div class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">實收累計</div><div class="text-2xl font-semibold text-slate-800">$\'+inc.toLocaleString()+\'</div></div>\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center"><div class="w-10 h-10 bg-orange-50 rounded-full flex items-center justify-center text-orange-600 mb-3 font-bold">!</div><div class="text-slate-400 text-[10px] font-bold uppercase mb-2 tracking-widest">待收金額</div><div class="text-2xl font-semibold text-slate-800">$\'+pend.toLocaleString()+\'</div></div>\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center"><div class="text-slate-400 text-[10px] font-bold uppercase mb-2 tracking-widest">預約總數</div><div class="text-2xl font-semibold text-slate-800">\'+d.orders.length+\'</div></div>\'+\'<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center"><div class="text-slate-400 text-[10px] font-bold uppercase mb-2 tracking-widest">系統會員</div><div class="text-2xl font-semibold text-slate-800">\'+d.users.length+\'</div></div></div>\'+\'<div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 font-medium font-sans text-base"><h2 class="text-slate-800 mb-6 font-semibold border-l-4 border-blue-600 pl-4 tracking-tight uppercase">營運數據概覽</h2>\'+\'<div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="bg-slate-50 text-[10px] text-slate-500 uppercase font-bold tracking-widest border-b border-slate-100">\'+\'<th class="p-4">課程名稱</th><th class="p-4 text-center">報名數</th><th class="p-4 text-emerald-600">已實收</th><th class="p-4 text-orange-600">待收款</th><th class="p-4">狀況分佈</th></tr></thead><tbody class="text-sm font-medium text-slate-600">\' + d.courses.map(c=>{const ords=d.orders.filter(o=>o.courseName===c.name);return \'<tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors font-medium text-slate-700 text-base"><td class="p-4 font-semibold text-slate-800 text-base">\'+c.name+\'</td><td class="p-4 text-center font-semibold">\'+ords.length+\'</td><td class="p-4 font-bold text-emerald-600">$\'+(ords.filter(o=>o.status==="已確認").reduce((s,o)=>s+(parseInt(o.amount)||0),0)).toLocaleString()+\'</td><td class="p-4 font-bold text-orange-500">$\'+(ords.filter(o=>o.status==="待匯款").reduce((s,o)=>s+(parseInt(o.amount)||0),0)).toLocaleString()+\'</td><td class="p-4"><div class="flex items-center space-x-3 text-[11px] font-bold uppercase tracking-tighter text-slate-400">\'+\'<span class="text-emerald-500">付: \'+ords.filter(o=>o.status==="已確認").length+\'</span>\'+\'<span class="text-orange-500">待: \'+ords.filter(o=>o.status==="待匯款").length+\'</span></div></td></tr>\'}).join(\'\') + \'</tbody></table></div></div>\';',
     '} else if(State.tab==="courses"){',
     'let rows=d.courses.map(c=>{const ords=d.orders.filter(o=>o.courseName===c.name); return \'<tr class="hover:bg-slate-50 transition border-b border-slate-50 text-base font-medium text-slate-700"><td class="p-5 font-medium">\'+\'<div class="text-slate-800 text-base leading-tight mb-1 font-semibold">\'+c.name+\'</div><div class="text-[10px] font-mono text-slate-300 uppercase tracking-widest">\'+c.id+\'</div></td>\'+\'<td class="p-5"><span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-widest">\'+c.category+\'</span></td>\'+\'<td class="p-5"><div class="text-xl font-bold text-emerald-500 font-mono tracking-tight">$\'+c.price+\'</div><div class="text-[10px] text-slate-400">\'+ords.length+\' / 20 人</div></td>\'+\'<td class="p-5 text-right">\'+\'<button class="text-slate-400 hover:text-blue-600 font-semibold transition px-6 py-2.5 border border-slate-100 rounded-xl text-xs uppercase bg-white">編輯</button></td></tr>\'}).join(\'\');',
-    's.innerHTML=\'<div class="bg-white rounded-[1.5rem] shadow-sm border border-slate-100 overflow-hidden"><table class="w-full text-left">\'+\'<thead class="bg-slate-50 text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100"><tr><th class="p-5 font-semibold">課程資訊</th><th class="p-5 font-semibold">類別</th><th class="p-5 font-semibold">定價/名額</th><th class="p-5 text-right font-semibold">管理</th></tr></thead><tbody>\'+rows+\'</tbody></table></div>\';',
+    's.innerHTML=\'<div class="bg-white rounded-[1.5rem] shadow-sm border border-slate-100 overflow-hidden font-sans"><table class="w-full text-left">\'+\'<thead class="bg-slate-50 text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100"><tr><th class="p-5 font-semibold">課程資訊</th><th class="p-5 font-semibold">類型</th><th class="p-5 font-semibold">定價/名額</th><th class="p-5 text-right font-semibold">管理</th></tr></thead><tbody>\'+rows+\'</tbody></table></div>\';',
     '} else if(State.tab==="orders"){',
     'let rows=d.orders.map(o=>\'<tr class="hover:bg-slate-50 transition border-b border-slate-50 text-base font-medium text-slate-700 font-sans"><td class="p-5 font-mono text-[10px] text-slate-300">\'+o.orderId+\'</td><td class="p-5">\'+\'<div class="font-semibold text-slate-800 text-base mb-1">\'+(o.name||\'訪客\')+\'</div><div class="text-[10px] text-slate-400 font-mono tracking-tighter">\'+(o.phone||\'-\')+\'</div></td>\'+\'<td class="p-5 text-sm text-slate-500 font-semibold">\'+o.courseName+\'</td>\'+\'<td class="p-5 font-bold text-blue-600 text-lg font-mono tracking-tighter">$\'+o.amount+\'</td>\'+\'<td class="p-5"><span class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-tight \'+(o.status==="已確認"?"bg-emerald-100 text-emerald-700":o.status==="待匯款"?"bg-orange-100 text-orange-700":"bg-slate-100 text-slate-400")+\'">\'+o.status+\'</span></td>\'+\'<td class="p-5 text-right"><button class="bg-slate-900 text-white px-6 py-3 rounded-2xl text-xs font-semibold shadow-sm hover:bg-black transition tracking-wider uppercase">維修</button></td></tr>\').join(\'\');',
-    's.innerHTML=\'<div class="bg-white rounded-[1.5rem] shadow-sm border border-slate-100 overflow-hidden"><table class="w-full text-left">\'+\'<thead class="bg-slate-50 text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100"><tr><th class="p-5 font-semibold">ID</th><th class="p-5 font-semibold">學員</th><th class="p-5 font-semibold">課程</th><th class="p-5 font-semibold text-emerald-600">實收</th><th class="p-5 text-center">狀態</th><th class="p-5 text-right font-semibold">管理</th></tr></thead><tbody class="text-sm">\'+rows+\'</tbody></table></div>\';',
+    's.innerHTML=\'<div class="bg-white rounded-[1.5rem] shadow-sm border border-slate-100 overflow-hidden font-sans"><table class="w-full text-left">\'+\'<thead class="bg-slate-50 text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100"><tr><th class="p-5 font-semibold">ID</th><th class="p-5 font-semibold text-base">學員資訊</th><th class="p-5 font-semibold text-base">課程</th><th class="p-5 font-semibold text-base">金額</th><th class="p-5 text-center text-base">狀態</th><th class="p-5 text-right font-semibold text-base">管理</th></tr></thead><tbody class="text-sm">\'+rows+\'</tbody></table></div>\';',
     '} else if(State.tab==="users"){',
-    'let rows=d.users.map(u=>\'<tr class="hover:bg-slate-50 transition border-b border-slate-100 text-base font-medium text-slate-700"><td class="p-5 font-semibold text-slate-800 text-base">\'+u.name+\'</td>\'+\'<td class="p-5 font-mono text-slate-600">\'+u.phone+\'</td>\'+\'<td class="p-5 text-[11px] text-slate-300 font-mono tracking-widest uppercase font-semibold">\'+u.uid+\'</td>\'+\'<td class="p-5 text-right text-slate-400 text-[11px] font-bold uppercase">\'+u.time+\'</td></tr>\').join(\'\');',
-    's.innerHTML=\'<div class="bg-white rounded-[1.5rem] shadow-sm border border-slate-100 overflow-hidden"><table class="w-full text-left">\'+\'<thead class="bg-slate-50 text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100"><tr><th class="p-5">姓名</th><th class="p-5">手機</th><th class="p-5">ID/UID</th><th class="p-5 text-right font-semibold">註冊日期</th></tr></thead><tbody>\'+rows+\'</tbody></table></div>\';',
+    'let rows=d.users.map(u=>\'<tr class="hover:bg-slate-50 transition border-b border-slate-100 text-base font-medium text-slate-700"><td class="p-5 font-semibold text-slate-800 text-base">\'+u.name+\'</td>\'+\'<td class="p-5 font-mono text-slate-600 font-bold">\'+u.phone+\'</td>\'+\'<td class="p-5 text-[11px] text-slate-300 font-mono tracking-widest uppercase font-semibold">\'+u.uid+\'</td>\'+\'<td class="p-5 text-right text-slate-400 text-[11px] font-bold uppercase">\'+u.time+\'</td></tr>\').join(\'\');',
+    's.innerHTML=\'<div class="bg-white rounded-[1.5rem] shadow-sm border border-slate-100 overflow-hidden font-sans"><table class="w-full text-left">\'+\'<thead class="bg-slate-50 text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100"><tr><th class="p-5">學員姓名</th><th class="p-5">手機</th><th class="p-5">ID/UID</th><th class="p-5 text-right">註冊日期</th></tr></thead><tbody>\'+rows+\'</tbody></table></div>\';',
     '}',
     '}',
     '</script></body></html>'
@@ -155,17 +152,17 @@ async function handleLiffPayment(orderId, env) {
   const h = [
     '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>匯款回報</title><style>body{font-family:sans-serif;margin:0;background:#f4f7f9;font-size:16px}.header{background:#1DB446;color:white;padding:30px;text-align:center;font-weight:semibold;font-size:20px}.container{padding:15px;max-width:500px;margin:auto}.card{background:white;border-radius:20px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,0.06);margin-bottom:15px}input{width:100%;padding:15px;border:1px solid #e2e8f0;border-radius:12px;box-sizing:border-box;margin-bottom:16px;outline:none;font-size:16px}.btn{background:#007AFF;color:white;padding:18px;border-radius:16px;border:none;width:100%;font-size:18px;font-weight:semibold;cursor:pointer}.label{font-size:12px;font-weight:bold;color:#94a3b8;text-transform:uppercase;margin-bottom:4px}</style></head>',
     '<body><div class="header">回報匯款資訊</div><div class="container"><div id="loading" style="text-align:center;padding:50px;color:#64748b;font-size:18px">正在讀取預約資料...</div><form id="payForm" style="display:none">',
-    '<div class="card"><div class="label">預約單號</div><div id="d-oid" style="font-weight:semibold;color:#1e293b;font-size:20px;font-family:monospace"></div><div class="label" style="margin-top:16px">預約課程</div><div id="d-name" style="font-size:18px;color:#475569;font-weight:semibold"></div></div>',
-    '<div class="card"><div class="label">報名姓名</div><input type="text" id="name" placeholder="請輸入姓名" required><div class="label">聯絡電話</div><input type="tel" id="phone" placeholder="請輸入電話" required><div class="label">帳號末五碼</div><input type="number" id="last5" placeholder="請輸入匯款末五碼" required></div>',
+    '<div class="card"><div class="label">預約單號</div><div id="d-oid" style="font-weight:semibold;color:#1e293b;font-size:20px;font-family:monospace"></div><div class="label" style="margin-top:16px">預約課程</div><div id="d-name" style="font-size:16px;color:#475569;font-weight:semibold"></div></div>',
+    '<div class="card"><div class="label">報名姓名</div><input type="text" id="name" placeholder="請輸入姓名" required><div class="label">聯絡電話</div><input type="tel" id="phone" placeholder="請輸入手機" required><div class="label">帳號末五碼</div><input type="number" id="last5" placeholder="請輸入末五碼" required></div>',
     '<button type="submit" class="btn" id="subBtn">確認送出回報</button></form></div>',
     '<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>',
     '<script>const oid="' + orderId + '", gas="' + env.APPS_SCRIPT_URL + '";',
     'liff.init({liffId:"2009130603-sXSzvlh2"}).then(async()=>{if(!liff.isLoggedIn()){liff.login();return}const uid=liff.getDecodedIDToken().sub;',
     'try{const oR=await fetch(gas+"?action=getUserOrders&lineUid="+uid).then(r=>r.json());const o=oR.data.find(x=>x.orderId===oid);if(!o){document.getElementById("loading").innerText="⚠️ 預約單號不存在";return}document.getElementById("d-oid").innerText=o.orderId; document.getElementById("d-name").innerText=o.courseName;',
     'if(o.status==="已回報匯款"||o.status==="已確認"){alert("此單已完成回報。"); liff.closeWindow(); return}document.getElementById("loading").style.display="none"; document.getElementById("payForm").style.display="block";}',
-    'catch(e){alert("資料載入失敗。");}});',
+    'catch(e){alert("資料載入失敗，請重新整理。");}});',
     'document.getElementById("payForm").onsubmit=async(e)=>{e.preventDefault(); document.getElementById("subBtn").disabled=true; document.getElementById("subBtn").innerText="傳送中...";',
-    'const res=await fetch(gas,{method:"POST",body:JSON.stringify({action:"reportPayment",data:{orderId:oid,name:document.getElementById("name").value,phone:document.getElementById("phone").value,last5:document.getElementById("last5").value,courseName:document.getElementById("d-name").innerText}})});',
+    'const res=await fetch(gas,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"reportPayment",data:{orderId:oid,name:document.getElementById("name").value,phone:document.getElementById("phone").value,last5:document.getElementById("last5").value,courseName:document.getElementById("d-name").innerText}})});',
     'const r=await res.json(); if(r.status==="success"){alert("回報成功！我們會儘速處理。"); liff.closeWindow();}else{alert("失敗："+r.message); document.getElementById("subBtn").disabled=false;}};</script></body></html>'
   ].join('\n');
   return new Response(h, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
