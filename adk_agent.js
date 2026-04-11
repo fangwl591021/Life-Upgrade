@@ -18,12 +18,12 @@ export async function handleAIRequest(event, env) {
       const flexMessage = generateOrderListFlexMessage(orders);
       const welcomeText = `感謝您的預約！✨ 請點擊下方按鈕完成匯款回報 💳，期待在課程中與您相見歡，一起探索生命的無限可能！🌈`;
 
-      // 檢查是否有註冊姓名，有名字就不顯示 UID
+      // 判斷：如果有註冊姓名就不顯示 UID
       const profile = await getUserProfile(userId, env);
       const displayName = (profile && profile.name) ? profile.name : `UID: ${userId}`;
       const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       
-      await sendTelegramMessage(`🛎️ 新預約申請通知\n__________________\n👤 預約人: ${displayName}\n📚 課程: ${courseName}\n💰 金額: ${amount}\n⏰ 時間: ${now}`, env);
+      await sendTelegramMessage(`🛎️ 新預約申請通知\n__________________\n\n👤 預約人 : ${displayName}\n📚 課程名稱 : ${courseName}\n💰 預約金額 : ${amount} 元\n⏰ 預約時間 : ${now}`, env);
 
       return await replyToLINE(event.replyToken, welcomeText, flexMessage, env);
     } catch (e) {
@@ -31,7 +31,7 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // --- 2. 取消報名指令 ---
+  // --- 2. 取消報名處理 ---
   const cancelMatch = userMessage.match(/我想取消報名\s*\(單號\s*[:：]\s*(.+?)\)/);
   if (cancelMatch) {
     const orderId = cancelMatch[1].trim();
@@ -42,15 +42,17 @@ export async function handleAIRequest(event, env) {
         body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
       });
       
+      // 判斷：如果有註冊姓名就不顯示 UID
       const profile = await getUserProfile(userId, env);
       const displayName = (profile && profile.name) ? profile.name : `UID: ${userId}`;
-      await sendTelegramMessage(`🗑️ 使用者取消預約\n🆔 單號: ${orderId}\n👤 取消人: ${displayName}`, env);
+      const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       
+      await sendTelegramMessage(`🗑️ 取消預約通知\n__________________\n\n🆔 訂單單號 : ${orderId}\n👤 取消學員 : ${displayName}\n⏰ 取消時間 : ${now}`, env);
       return await replyToLINE(event.replyToken, `已成功為您取消單號 ${orderId} 的預約紀錄。`, null, env);
     } catch (e) { return await replyToLINE(event.replyToken, "取消失敗，請聯繫客服。", null, env); }
   }
 
-  // --- 3. 查詢報名/預約紀錄 ---
+  // --- 3. 查詢報名紀錄 ---
   if (userMessage.includes('我的預約') || userMessage.includes('我的報名') || userMessage.includes('報名紀錄')) {
     const orders = await getUserOrders(userId, env);
     if (orders && orders.length > 0) {
@@ -60,7 +62,7 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // --- 4. 選單顯示邏輯 ---
+  // 課程首頁與選單邏輯維持...
   if (userMessage === '我想看課程' || userMessage === '有哪些課程') {
     const cats = await getCourseCategories(env);
     return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
@@ -75,10 +77,9 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // AI 閒聊
   const requestBody = {
     model: "gpt-4o",
-    messages: [{ role: "system", content: "你是專業課程客服。語氣溫暖體貼。" }, { role: "user", content: userMessage }],
+    messages: [{ role: "system", content: "你是專業課程客服。語氣溫暖體貼。若用戶想看課程或查詢預約，請引導使用選單。" }, { role: "user", content: userMessage }],
     tool_choice: "auto"
   };
 
