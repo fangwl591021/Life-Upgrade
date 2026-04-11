@@ -5,7 +5,7 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // 將 API Key 提取至變數管理
+  // 使用 Cloudflare 環境變數中的 API Keys
   const geminiKey = env.GEMINI_API_KEY;
   const openaiKey = env.OPENAI_API_KEY;
 
@@ -59,10 +59,10 @@ export async function handleAIRequest(event, env) {
     return await replyToLINE(event.replyToken, '抱歉，目前找不到開放預約的課程。', null, env);
   }
 
-  // 6. 雙引擎 AI 核心 (Gemini 優先 + OpenAI 備援)
+  // 6. AI 客服雙引擎架構 (效益最大化：Gemini 優先 + OpenAI 備援)
   const systemPrompt = "你是專業課程客服。模擬 LINE OA 原生資訊流格式，不包框、不加粗字、親切簡潔。";
   
-  // A. 嘗試首選引擎：Gemini (效益最大化：免費額度優先)
+  // A. 嘗試首選引擎：Gemini (免費效益)
   const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey;
   try {
     const gRes = await fetch(geminiUrl, {
@@ -78,50 +78,31 @@ export async function handleAIRequest(event, env) {
       const gText = gData.candidates && gData.candidates[0] && gData.candidates[0].content && gData.candidates[0].content.parts && gData.candidates[0].content.parts[0] && gData.candidates[0].content.parts[0].text;
       if (gText) return await replyToLINE(event.replyToken, gText, null, env);
     }
-  } catch (err) {
-    console.error('Gemini Error, switching to OpenAI...');
-  }
+  } catch (err) {}
 
   // B. 嘗試備援引擎：OpenAI (付費保障穩定性)
   try {
     const oRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json", 
-        "Authorization": "Bearer " + openaiKey 
-      },
-      body: JSON.stringify({ 
-        model: "gpt-4o", 
-        messages: [
-          { role: "system", content: systemPrompt }, 
-          { role: "user", content: userMessage }
-        ] 
-      })
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + openaiKey },
+      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] })
     });
     if (oRes.ok) {
       const oData = await oRes.json();
       const oText = oData.choices && oData.choices[0] && oData.choices[0].message && oData.choices[0].message.content;
       if (oText) return await replyToLINE(event.replyToken, oText, null, env);
     }
-  } catch (err) {
-    console.error('OpenAI Error');
-  }
+  } catch (err) {}
 
-  // C. 最終防線：若雙引擎皆失效回傳罐頭訊息
-  await replyToLINE(event.replyToken, "我現在無法思考，請稍後再問我一次，或者點選下方選單查看課程喔！", null, env);
+  // C. 最後防線
+  await replyToLINE(event.replyToken, "我現在無法思考，請稍後再問我一次，或者直接點選選單查看課程喔！", null, env);
 }
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
-  const messages = []; 
-  if (text) messages.push({ type: 'text', text: text }); 
-  if (flexMessage) messages.push(flexMessage);
-  
+  const messages = []; if (text) messages.push({ type: 'text', text: text }); if (flexMessage) messages.push(flexMessage);
   await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json', 
-      'Authorization': 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN 
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + env.LINE_CHANNEL_ACCESS_TOKEN },
     body: JSON.stringify({ replyToken: replyToken, messages: messages })
   });
 }
