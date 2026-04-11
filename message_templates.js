@@ -33,19 +33,16 @@ export function generateCategoryFlexMessage(categories) {
     "一般": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/25b2916b5c49db617f52fa5ea48efee7.jpg",
     "工作坊": "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c4ca4238a0b923820dcc509a6f75849b.png"
   };
-  const bubbles = categories.map(category => {
-    const imageUrl = categoryImages[category] || "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png";
-    return {
-      type: "bubble", size: "micro",
-      body: { type: "box", layout: "vertical", paddingAll: "0px", contents: [
-        { type: "image", url: imageUrl, size: "full", aspectRatio: "20:13", aspectMode: "cover" },
-        { type: "box", layout: "vertical", paddingAll: "sm", contents: [{ type: "text", text: category, weight: "bold", size: "md", align: "center", color: "#000000" }]}
-      ]},
-      footer: { type: "box", layout: "vertical", paddingAll: "xs", contents: [
-        { type: "button", action: { type: "message", label: "查看課程", text: `我想查詢 ${category} 的課程` }, style: "primary", height: "sm", color: "#007AFF" }
-      ]}
-    };
-  });
+  const bubbles = categories.map(category => ({
+    type: "bubble", size: "micro",
+    body: { type: "box", layout: "vertical", paddingAll: "0px", contents: [
+      { type: "image", url: categoryImages[category] || "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png", size: "full", aspectRatio: "20:13", aspectMode: "cover" },
+      { type: "box", layout: "vertical", paddingAll: "sm", contents: [{ type: "text", text: category, weight: "bold", size: "md", align: "center", color: "#000000" }]}
+    ]},
+    footer: { type: "box", layout: "vertical", paddingAll: "xs", contents: [
+      { type: "button", action: { type: "message", label: "查看課程", text: `我想查詢 ${category} 的課程` }, style: "primary", height: "sm", color: "#007AFF" }
+    ]}
+  }));
   return { type: "flex", altText: "請選擇感興趣的課程類型", contents: { type: "carousel", contents: bubbles } };
 }
 
@@ -55,16 +52,17 @@ export function generateCourseFlexMessage(courses) {
     type: "bubble", size: "mega",
     body: { type: "box", layout: "vertical", paddingAll: "0px", contents: [
       { type: "image", url: course.imageUrl || "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png", size: "full", aspectRatio: "20:13", aspectMode: "cover" },
-      { type: "box", layout: "vertical", paddingAll: "lg", contents: [
+      { type: "box", layout: "vertical", paddingAll: "lg", spacing: "sm", contents: [
         { type: "text", text: course.name, weight: "bold", size: "xl", color: "#000000", wrap: true },
-        { type: "text", text: `NT $${course.price}起`, color: "#FF0000", weight: "bold", size: "xl", margin: "md" }
+        { type: "text", text: (course.description || "").slice(0, 100) + "...", size: "md", color: "#000000", wrap: true },
+        { type: "text", text: `NT $${course.price}起`, color: "#FF0000", weight: "bold", size: "xxl", align: "end", margin: "md" }
       ]}
     ]},
-    footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
+    footer: { type: "box", layout: "vertical", spacing: "md", contents: [
       { type: "separator" },
-      { type: "box", layout: "horizontal", contents: [
+      { type: "box", layout: "horizontal", spacing: "md", contents: [
         { type: "button", action: { type: "uri", label: "課程說明 >", uri: `https://liff.line.me/2009130603-ktCTGk6d?id=${course.id}` }, style: "link", height: "sm" },
-        { type: "button", action: { type: "message", label: "我要報名", text: `我想預約 ${course.name} (編號:${course.id}, 金額:${course.price})` }, style: "primary", height: "sm", color: "#007AFF" }
+        { type: "button", action: { type: "message", label: "我要報名", text: `我想預約 ${course.name} (編號:${course.id}, 金額:${course.price})` }, style: "primary", height: "md", color: "#007AFF" }
       ]}
     ]}
   }));
