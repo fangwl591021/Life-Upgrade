@@ -11,20 +11,16 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const workerUrl = url.origin;
-
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-
     if (request.method === 'GET') {
       if (url.searchParams.has('orderId')) return handleLiffPayment(url, env, workerUrl);
       return handleLiffDescription(url, env);
     }
-
     if (request.method === 'POST') {
       try {
         const clonedRequest = request.clone();
         const body = await request.json();
         if (!body.events || body.events.length === 0) return new Response('OK');
-
         for (const event of body.events) {
           if (event.type === 'message' && event.message.type === 'text') {
             const text = event.message.text.trim();
