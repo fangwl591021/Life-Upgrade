@@ -4,4 +4,7 @@ compatibility_date = "2024-04-10"
 
 [vars]
 WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxSeeyBtaz0BSzctep-8mNHA5hD28-P4K6ddBKWKPhgO4Qq_s9Td1b46TRSp-IgzV3gBQ/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxAYZxchY1tnruGa5EBd_A8jiMEBZ3juEf9i8VJh0YfmGq6yoBr8Ss2lXTuhwwpsocHg/exec"
+# 後台管理認證設定
+ADMIN_USERNAME = "ADMIN"
+ADMIN_PASSWORD = "@1234"
