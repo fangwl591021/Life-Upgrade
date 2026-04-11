@@ -10,50 +10,49 @@ const corsHeaders = {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const workerUrl = url.origin;
-
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
-    // 管理後台 UI
+    // 路由：管理後台
     if (url.pathname === '/admin') return handleAdminPage(env);
 
-    // API 代理：確保 POST Body 正確轉發
+    // 路由：後台 API 代理
     if (url.pathname.startsWith('/api/admin/')) {
       const user = request.headers.get('X-Admin-User');
       const pass = request.headers.get('X-Admin-Pass');
       if (user !== env.ADMIN_USERNAME || pass !== env.ADMIN_PASSWORD) return new Response('Unauthorized', { status: 401 });
-      
       const gasUrl = `${env.APPS_SCRIPT_URL}?action=${url.pathname.replace('/api/admin/', '')}`;
       try {
-        const bodyText = (request.method === 'POST') ? await request.text() : null;
-        const gasRes = await fetch(gasUrl, {
+        const fetchOptions = {
           method: request.method,
           redirect: 'follow',
-          body: bodyText,
           headers: { 'Accept': 'application/json' }
-        });
-        const text = await gasRes.text();
-        return new Response(text, { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        };
+        if (request.method === 'POST') {
+          fetchOptions.body = await request.text();
+          fetchOptions.headers['Content-Type'] = 'text/plain;charset=utf-8';
+        }
+        const gasRes = await fetch(gasUrl, fetchOptions);
+        return new Response(await gasRes.text(), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
       } catch (e) {
         return new Response(JSON.stringify({status:'error', message: e.toString()}), { status: 500, headers: corsHeaders });
       }
     }
 
-    // LIFF 功能處理
+    // 路由：LIFF 功能
     if (request.method === 'GET') {
       if (url.searchParams.has('orderId')) return handleLiffPayment(url, env);
       if (url.searchParams.has('id')) return handleLiffDescription(url, env);
       return handleStatusPage();
     }
 
-    // Webhook 處理
+    // 路由：LINE Webhook
     if (request.method === 'POST') {
       try {
         const body = await request.json();
         if (!body.events || body.events.length === 0) return new Response('OK');
         for (const event of body.events) {
           if (event.type === 'message' && event.message.type === 'text') {
-            const aiKeywords = ['預約', '課程', '報名', '紀錄', '查', '訂單', '取消報名'];
+            const aiKeywords = ['預約', '課程', '報名', '紀錄', '訂單', '取消報名'];
             if (aiKeywords.some(k => event.message.text.includes(k))) {
               ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
               ctx.waitUntil(handleAIRequest(event, env));
@@ -68,13 +67,7 @@ export default {
 };
 
 async function triggerLoadingAnimation(userId, env) {
-  try {
-    await fetch('https://api.line.me/v2/bot/chat/loading/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
-      body: JSON.stringify({ chatId: userId, loadingSeconds: 5 })
-    });
-  } catch (e) {}
+  try { await fetch('https://api.line.me/v2/bot/chat/loading/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` }, body: JSON.stringify({ chatId: userId, loadingSeconds: 5 }) }); } catch (e) {}
 }
 
 function handleStatusPage() {
@@ -84,20 +77,20 @@ function handleStatusPage() {
 
 async function handleAdminPage(env) {
   const html = `
-    <!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>Sportsland Pro</title><script src="https://cdn.tailwindcss.com"></script><style>body{font-family:sans-serif;background:#f8fafc}.nav-active{color:#2563eb;border-bottom:2px solid #2563eb;font-weight:600}</style></head>
+    <!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>Pro Admin</title><script src="https://cdn.tailwindcss.com"></script><style>body{font-family:sans-serif;background:#f8fafc}.nav-active{color:#2563eb;border-bottom:2px solid #2563eb;font-weight:600}</style></head>
     <body>
       <div id="login-box" class="fixed inset-0 bg-slate-50 flex items-center justify-center z-50">
         <div class="w-full max-w-sm bg-white p-8 rounded-2xl shadow-xl">
-          <h1 class="text-2xl font-black text-center mb-6">管理系統</h1>
+          <h1 class="text-2xl font-black text-center mb-6">後台管理系統認證</h1>
           <input type="text" id="admin-user" class="w-full border p-3 rounded-xl mb-4 outline-none" placeholder="Username">
           <input type="password" id="admin-pw" class="w-full border p-3 rounded-xl mb-6 outline-none" placeholder="Password">
           <button onclick="doLogin()" id="lbtn" class="w-full bg-blue-600 text-white p-4 rounded-xl font-bold">登入系統</button>
-          <div id="diag" class="hidden mt-4 p-3 bg-red-50 text-red-600 text-[10px] rounded font-mono"></div>
+          <div id="diag" class="hidden mt-4 p-3 bg-red-50 text-red-600 text-[10px] rounded font-mono overflow-auto max-h-40"></div>
         </div>
       </div>
       <div id="app-box" class="hidden">
         <header class="bg-white border-b sticky top-0 px-4 h-16 flex items-center justify-between z-10">
-          <span class="font-bold text-blue-600">Sportsland Admin</span>
+          <span class="font-bold text-blue-600">Sportsland Pro</span>
           <nav class="flex space-x-6">
             <button onclick="st('dashboard')" id="n-dashboard" class="nav-active text-sm py-5">數據看板</button>
             <button onclick="st('orders')" id="n-orders" class="text-slate-500 text-sm py-5">訂單管理</button>
@@ -113,62 +106,42 @@ async function handleAdminPage(env) {
         async function doLogin(){
           u=document.getElementById('admin-user').value; p=document.getElementById('admin-pw').value;
           const b=document.getElementById('lbtn'); const d=document.getElementById('diag');
-          b.innerText="連線中..."; d.classList.add('hidden');
+          b.innerText="驗證中..."; d.classList.add('hidden');
           try {
             const r=await fetch('/api/admin/adminGetData',{headers:{'X-Admin-User':u,'X-Admin-Pass':p}});
             const t=await r.text();
             try {
               const j=JSON.parse(t);
               if(r.ok && j.status==='success'){ sd=j; document.getElementById('login-box').classList.add('hidden'); document.getElementById('app-box').classList.remove('hidden'); st('dashboard'); }
-              else { alert('認證失敗'); }
-            } catch(e) { d.classList.remove('hidden'); d.innerText="收到 HTML 錯誤，請檢查 GAS 權限。\\n\\n內容："+t.substring(0,300); }
-          } catch(e) { alert('連線錯誤'); } finally { b.innerText="登入系統"; }
+              else { alert('帳號或密碼錯誤'); }
+            } catch(e) { d.classList.remove('hidden'); d.innerText="收到 HTML 錯誤，請檢查 GAS 權限設為所有人。\\n內容："+t.substring(0,300); }
+          } catch(e) { alert('連線失敗'); } finally { b.innerText="登入系統"; }
         }
         function st(tab){
           document.querySelectorAll('nav button').forEach(b=>b.className="text-slate-500 text-sm py-5");
           document.getElementById('n-'+tab).className="nav-active text-sm py-5";
-          const data = sd.data;
+          const d = sd.data;
           if(tab==='dashboard') {
-            const pend=data.orders.filter(o=>o.status==='待匯款').length;
-            const inc=data.orders.filter(o=>o.status==='已確認').reduce((s,o)=>s+(parseInt(o.amount)||0),0);
-            document.getElementById('cnt').innerHTML=\`<div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="bg-white p-6 rounded-2xl shadow-sm"><div class="text-slate-400 text-xs font-bold mb-2">待處理訂單</div><div class="text-3xl font-black text-orange-500">\${pend} 筆</div></div><div class="bg-white p-6 rounded-2xl shadow-sm"><div class="text-slate-400 text-xs font-bold mb-2">累計收入</div><div class="text-3xl font-black text-emerald-600">$\${inc.toLocaleString()}</div></div><div class="bg-white p-6 rounded-2xl shadow-sm"><div class="text-slate-400 text-xs font-bold mb-2">學員數</div><div class="text-3xl font-black text-blue-600">\${data.users.length} 位</div></div></div>\`;
+            const pend=d.orders.filter(o=>o.status==='待匯款').length;
+            const inc=d.orders.filter(o=>o.status==='已確認').reduce((s,o)=>s+(parseInt(o.amount)||0),0);
+            document.getElementById('cnt').innerHTML=\`<div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="bg-white p-6 rounded-2xl shadow-sm"><div class="text-slate-400 text-xs font-bold mb-2 uppercase">待處理訂單</div><div class="text-3xl font-black text-orange-500">\${pend} 筆</div></div><div class="bg-white p-6 rounded-2xl shadow-sm"><div class="text-slate-400 text-xs font-bold mb-2 uppercase">累計總收入</div><div class="text-3xl font-black text-emerald-600">$\${inc.toLocaleString()}</div></div><div class="bg-white p-6 rounded-2xl shadow-sm"><div class="text-slate-400 text-xs font-bold mb-2 uppercase">總學員數</div><div class="text-3xl font-black text-blue-600">\${d.users.length} 位</div></div></div>\`;
           }
           if(tab==='orders') {
-            let rs=data.orders.map(o=>\`<tr class="border-b text-sm">
-              <td class="p-4 font-mono text-xs text-slate-400">\${o.orderId}</td>
-              <td class="p-4 font-bold">\${o.name||'-'}</td>
-              <td class="p-4">\${o.courseName}</td>
-              <td class="p-4 font-bold text-blue-600">$\${o.amount}</td>
-              <td class="p-4 text-xs">\${o.status}</td>
-              <td class="p-4 font-mono text-blue-500">\${o.last5||'-'}</td>
-              <td class="p-4 text-right">
-                <button onclick="uo('\${o.orderId}','已確認')" class="text-blue-600 font-bold mr-3 text-xs">確認</button>
-                <button onclick="uo('\${o.orderId}','已取消')" class="text-slate-300 font-bold text-xs">取消</button>
-              </td>
-            </tr>\`).join('');
-            document.getElementById('cnt').innerHTML=\`<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-left"><thead><tr class="bg-slate-50 text-[10px] text-slate-400">
-              <th class="p-4">ID</th><th class="p-4">姓名</th><th class="p-4">課程</th><th class="p-4">金額</th><th class="p-4">狀態</th><th class="p-4">末五碼</th><th class="p-4"></th>
-            </tr></thead><tbody>\${rs}</tbody></table></div>\`;
+            let rs=d.orders.map(o=>\`<tr class="border-b text-sm"><td class="p-4 font-mono text-xs text-slate-400">\${o.orderId}</td><td class="p-4 font-bold">\${o.name||'-'}</td><td class="p-4">\${o.courseName}</td><td class="p-4 font-bold text-blue-600">$\${o.amount}</td><td class="p-4 text-xs">\${o.status}</td><td class="p-4 font-mono text-blue-500">\${o.last5||'-'}</td><td class="p-4 text-right"><button onclick="uo('\${o.orderId}','已確認')" class="text-blue-600 font-bold mr-3 text-xs uppercase">確認</button><button onclick="uo('\${o.orderId}','已取消')" class="text-slate-300 font-bold text-xs uppercase">取消</button></td></tr>\`).join('');
+            document.getElementById('cnt').innerHTML=\`<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-left"><thead><tr class="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase"><th class="p-4">Order ID</th><th class="p-4">Name</th><th class="p-4">Course</th><th class="p-4">Amount</th><th class="p-4">Status</th><th class="p-4">Bank</th><th class="p-4">Action</th></tr></thead><tbody>\${rs}</tbody></table></div>\`;
           }
           if(tab==='courses') {
-            let cs=data.courses.map(c=>\`<div class="bg-white p-6 rounded-2xl shadow-sm border border-transparent hover:border-blue-100 transition">
-              <div class="flex justify-between mb-4"><div class="font-bold">\${c.name}</div><div class="text-[10px] font-mono text-slate-300">\${c.id}</div></div>
-              <div class="space-y-4">
-                <div><label class="text-[10px] text-slate-400 font-bold">類別</label><input id="c-\${c.id}" value="\${c.category}" class="w-full border-b text-xs py-1 outline-none"></div>
-                <div><label class="text-[10px] text-slate-400 font-bold">價格</label><input id="p-\${c.id}" type="number" value="\${c.price}" class="w-full border-b text-lg font-black text-blue-600 outline-none"></div>
-                <button onclick="sc('\${c.id}')" class="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold">儲存更新</button>
-              </div>
-            </div>\`).join('');
+            let cs=d.courses.map(c=>\`<div class="bg-white p-6 rounded-2xl shadow-sm border border-transparent hover:border-blue-100 transition"><div class="flex justify-between mb-4"><div class="font-bold">\${c.name}</div><div class="text-[10px] font-mono text-slate-300">\${c.id}</div></div><div class="space-y-4"><div><label class="text-[10px] text-slate-400 font-bold uppercase">類別</label><input id="c-\${c.id}" value="\${c.category}" class="w-full border-b text-xs py-1 outline-none"></div><div><label class="text-[10px] text-slate-400 font-bold uppercase">價格</label><input id="p-\${c.id}" type="number" value="\${c.price}" class="w-full border-b text-lg font-black text-blue-600 outline-none"></div><button onclick="sc('\${c.id}')" class="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold">儲存更新</button></div></div>\`).join('');
             document.getElementById('cnt').innerHTML=\`<div class="grid grid-cols-1 md:grid-cols-3 gap-6">\${cs}</div>\`;
           }
           if(tab==='users') {
-            let us=data.users.map(u=>\`<tr class="border-b"><td class="p-4 text-xs font-mono text-slate-400">\${u.uid}</td><td class="p-4 font-bold">\${u.name}</td><td class="p-4 text-sm">\${u.phone}</td><td class="p-4 text-xs text-slate-300">\${u.time}</td></tr>\`).join('');
-            document.getElementById('cnt').innerHTML=\`<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-left"><thead><tr class="bg-slate-50 text-[10px] text-slate-400"><th class="p-4">UID</th><th class="p-4">姓名</th><th class="p-4">電話</th><th class="p-4">註冊</th></tr></thead><tbody>\${us}</tbody></table></div>\`;
+            let us=d.users.map(u=>\`<tr class="border-b hover:bg-slate-50 transition"><td class="p-4 text-xs font-mono text-slate-400">\${u.uid}</td><td class="p-4 font-bold">\${u.name}</td><td class="p-4 text-sm font-mono text-slate-500">\${u.phone}</td><td class="p-4 text-xs text-slate-300">\${u.time}</td></tr>\`).join('');
+            document.getElementById('cnt').innerHTML=\`<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-left"><thead><tr class="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase"><th class="p-4">LINE UID</th><th class="p-4">姓名</th><th class="p-4">電話</th><th class="p-4">註冊時間</th></tr></thead><tbody>\${us}</tbody></table></div>\`;
           }
         }
-        async function uo(id,s){if(!confirm('確認更新狀態？'))return;const r=await fetch('/api/admin/adminUpdateOrder',{method:'POST',headers:{'X-Admin-User':u,'X-Admin-Pass':p,'Content-Type':'application/json'},body:JSON.stringify({action:'adminUpdateOrder',data:{orderId:id,status:s}})});if(r.ok)rf()}
+        async function uo(id,s){if(!confirm('確認狀態更新？'))return;const r=await fetch('/api/admin/adminUpdateOrder',{method:'POST',headers:{'X-Admin-User':u,'X-Admin-Pass':p,'Content-Type':'application/json'},body:JSON.stringify({action:'adminUpdateOrder',data:{orderId:id,status:s}})});if(r.ok)rf()}
         async function sc(id){const p1=document.getElementById('p-'+id).value, c1=document.getElementById('c-'+id).value;const r=await fetch('/api/admin/adminUpdateCourse',{method:'POST',headers:{'X-Admin-User':u,'X-Admin-Pass':p,'Content-Type':'application/json'},body:JSON.stringify({action:'adminUpdateCourse',data:{id:id,price:p1,category:c1}})});if(r.ok){alert('成功');rf()}}
-        async function rf(){const r=await fetch('/api/admin/adminGetData',{headers:{'X-Admin-User':u,'X-Admin-Pass':p}});sd=await r.json();st(document.querySelector('.nav-active').id.replace('n-',''))}
+        async function rf(){const r=await fetch('/api/admin/adminGetData',{headers:{'X-Admin-User':u,'X-Admin-Pass':p}});const j=await r.json();sd=j;st(document.querySelector('.nav-active').id.replace('n-',''))}
       </script>
     </body></html>
   `;
@@ -177,12 +150,12 @@ async function handleAdminPage(env) {
 
 async function handleLiffPayment(url, env) {
   const orderId = url.searchParams.get('orderId');
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>匯款回報</title><style>body{font-family:sans-serif;margin:0;background:#f4f7f9}.header{background:#1DB446;color:white;padding:25px;text-align:center}.container{padding:15px;max-width:500px;margin:auto}.card{background:white;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:15px}input{width:100%;padding:12px;border:1px solid #e0e0e0;border-radius:8px;box-sizing:border-box;margin-bottom:15px}.btn{background:#007AFF;color:white;padding:16px;border-radius:12px;border:none;width:100%;font-size:17px;font-weight:bold}</style></head><body><div class="header">回報匯款資訊</div><div class="container"><div id="loading" style="text-align:center;padding:50px">檢查資料中...</div><form id="payForm" style="display:none"><div class="card"><div id="d-oid"></div><div id="d-name"></div></div><div class="card"><input type="text" id="name" placeholder="姓名" required><input type="tel" id="phone" placeholder="電話" required><input type="number" id="last5" placeholder="帳號末五碼" required></div><button type="submit" class="btn" id="subBtn">送出回報</button></form></div><script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script><script>const oid="${orderId}";const gas="${env.APPS_SCRIPT_URL}";liff.init({liffId:"2009130603-ktCTGk6d"}).then(async()=>{if(!liff.isLoggedIn()){liff.login();return}const uid=liff.getDecodedIDToken().sub;try{const[oR,pR]=await Promise.all([fetch(gas+"?action=getUserOrders&lineUid="+uid).then(r=>r.json()),fetch(gas+"?action=getUserProfile&lineUid="+uid).then(r=>r.json())]);const o=oR.data.find(x=>x.orderId===oid);if(!o){document.getElementById('loading').innerText='單號不存在';return}document.getElementById('d-oid').innerText="單號: "+o.orderId;document.getElementById('d-name').innerText="課程: "+o.courseName;if(pR.data){document.getElementById('name').value=pR.data.name||"";document.getElementById('phone').value=pR.data.phone||""}document.getElementById('loading').style.display='none';document.getElementById('payForm').style.display='block'}catch(e){alert("GAS 權限錯誤")}});document.getElementById('payForm').onsubmit=async(e)=>{e.preventDefault();document.getElementById('subBtn').disabled=true;const res=await fetch(gas,{method:'POST',body:JSON.stringify({action:'reportPayment',data:{orderId:oid,name:document.getElementById('name').value,phone:document.getElementById('phone').value,last5:document.getElementById('last5').value,courseName:document.getElementById('d-name').innerText}})});const r=await res.json();if(r.status==='success'){alert('成功');liff.closeWindow()}else{alert('失敗');document.getElementById('subBtn').disabled=false}}; </script></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>匯款回報</title><style>body{font-family:sans-serif;margin:0;background:#f4f7f9}.header{background:#1DB446;color:white;padding:25px;text-align:center}.container{padding:15px;max-width:500px;margin:auto}.card{background:white;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:15px}input{width:100%;padding:12px;border:1px solid #e0e0e0;border-radius:8px;box-sizing:border-box;margin-bottom:15px}.btn{background:#007AFF;color:white;padding:16px;border-radius:12px;border:none;width:100%;font-size:17px;font-weight:bold}</style></head><body><div class="header">回報匯款資訊</div><div class="container"><div id="loading" style="text-align:center;padding:50px">檢查資料中...</div><form id="payForm" style="display:none"><div class="card"><div id="d-oid"></div><div id="d-name"></div></div><div class="card"><input type="text" id="name" placeholder="姓名" required><input type="tel" id="phone" placeholder="電話" required><input type="number" id="last5" placeholder="帳號末五碼" required></div><button type="submit" class="btn" id="subBtn">送出回報</button></form></div><script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script><script>const oid="${orderId}";const gas="${env.APPS_SCRIPT_URL}";liff.init({liffId:"2009130603-ktCTGk6d"}).then(async()=>{if(!liff.isLoggedIn()){liff.login();return}const uid=liff.getDecodedIDToken().sub;try{const[oR,pR]=await Promise.all([fetch(gas+"?action=getUserOrders&lineUid="+uid).then(r=>r.json()),fetch(gas+"?action=getUserProfile&lineUid="+uid).then(r=>r.json())]);const o=oR.data.find(x=>x.orderId===oid);if(!o){document.getElementById('loading').innerText='單號不存在';return}document.getElementById('d-oid').innerText="單號: "+o.orderId;document.getElementById('d-name').innerText="課程: "+o.courseName;if(pR.data){document.getElementById('name').value=pR.data.name||"";document.getElementById('phone').value=pR.data.phone||""}document.getElementById('loading').style.display='none';document.getElementById('payForm').style.display='block'}catch(e){alert("資料載入失敗")}});document.getElementById('payForm').onsubmit=async(e)=>{e.preventDefault();document.getElementById('subBtn').disabled=true;const res=await fetch(gas,{method:'POST',body:JSON.stringify({action:'reportPayment',data:{orderId:oid,name:document.getElementById('name').value,phone:document.getElementById('phone').value,last5:document.getElementById('last5').value,courseName:document.getElementById('d-name').innerText}})});const r=await res.json();if(r.status==='success'){alert('成功');liff.closeWindow()}else{alert('失敗');document.getElementById('subBtn').disabled=false}}; </script></body></html>`;
   return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
 
 async function handleLiffDescription(url, env) {
   const cid = url.searchParams.get('id');
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:sans-serif;margin:0;background:#fff}img{width:100%;height:auto;background:#eee}.content{padding:20px}.price{color:#f00;font-weight:bold;font-size:22px}.desc{line-height:1.7;white-space:pre-wrap;font-size:18px}.btn-box{position:fixed;bottom:0;width:100%;padding:15px;background:#fff;border-top:1px solid #eee}.btn{background:#007AFF;color:#fff;padding:14px;border-radius:10px;width:100%;font-weight:bold;font-size:18px;border:none}</style></head><body><div id="loading" style="padding:100px;text-align:center">讀取中...</div><div id="app" style="display:none"><img id="c-img"><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div></div><div class="btn-box" id="btn-c" style="display:none"><button class="btn" onclick="liff.closeWindow()">關閉</button></div><script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script><script>liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => { fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(r=>r.json()).then(res=>{ const c=res.data.find(x=>x.id==="${cid}"); if(c){ document.getElementById('c-img').src=c.imageUrl; document.getElementById('c-name').innerText=c.name; document.getElementById('c-price').innerText="NT $"+c.price+" 起"; document.getElementById('c-desc').innerText=c.description; document.getElementById('loading').style.display='none'; document.getElementById('app').style.display='block'; document.getElementById('btn-c').style.display='block' } }) })</script></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:sans-serif;margin:0;background:#fff}img{width:100%;height:auto;background:#eee}.content{padding:20px}.price{color:#f00;font-weight:bold;font-size:22px}.desc{line-height:1.7;white-space:pre-wrap;font-size:18px}.btn-box{position:fixed;bottom:0;width:100%;padding:15px;background:#fff;border-top:1px solid #eee}.btn{background:#007AFF;color:#fff;padding:14px;border-radius:10px;width:100%;font-weight:bold;font-size:18px;border:none}</style></head><body><div id="loading" style="padding:100px;text-align:center">讀取中...</div><div id="app" style="display:none"><img id="c-img"><div class="content"><h1 id="c-name"></h1><div class="price" id="c-price"></div><div id="c-desc" class="desc"></div></div></div><div class="btn-box" id="btn-c" style="display:none"><button class="btn" onclick="liff.closeWindow()">關閉視窗</button></div><script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script><script>liff.init({ liffId: "2009130603-ktCTGk6d" }).then(() => { fetch("${env.APPS_SCRIPT_URL}?action=getCourseList").then(r=>r.json()).then(res=>{ const c=res.data.find(x=>x.id==="${cid}"); if(c){ document.getElementById('c-img').src=c.imageUrl; document.getElementById('c-name').innerText=c.name; document.getElementById('c-price').innerText="NT $"+c.price+" 起"; document.getElementById('c-desc').innerText=c.description; document.getElementById('loading').style.display='none'; document.getElementById('app').style.display='block'; document.getElementById('btn-c').style.display='block' } }) })</script></body></html>`;
   return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
