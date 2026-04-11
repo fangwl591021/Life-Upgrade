@@ -27,7 +27,24 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // --- 2. 其他制式指令攔截 ---
+  // --- 2. 取消報名處理 ---
+  const cancelMatch = userMessage.match(/我想取消報名\s*\(單號\s*:\s*(.+?)\)/);
+  if (cancelMatch) {
+    const orderId = cancelMatch[1].trim();
+    try {
+      await fetch(env.APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancelOrder', data: { orderId } })
+      });
+      await sendTelegramMessage(`🗑️ 使用者取消預約\n🆔 單號: ${orderId}\n👤 UID: ${userId}`, env);
+      return await replyToLINE(event.replyToken, `已為您取消單號 ${orderId} 的預約。`, null, env);
+    } catch (e) {
+      return await replyToLINE(event.replyToken, "取消失敗，請連繫客服處理。", null, env);
+    }
+  }
+
+  // --- 3. 其他制式指令攔截 ---
   if (userMessage.includes('我的預約') || userMessage.includes('我的報名') || userMessage.includes('報名紀錄')) {
     const orders = await getUserOrders(userId, env);
     if (orders && orders.length > 0) {
@@ -51,7 +68,7 @@ export async function handleAIRequest(event, env) {
     }
   }
 
-  // --- 3. AI 路徑 ---
+  // AI 路徑... (略)
   const requestBody = {
     model: "gpt-4o",
     messages: [
