@@ -12,40 +12,44 @@ export async function handleLiffPayment(orderId, env) {
     '.btn{background:#007AFF;color:white;padding:20px;border-radius:20px;border:none;width:100%;font-size:18px;font-weight:600;cursor:pointer;box-shadow:0 10px 25px rgba(0,122,255,0.2)}',
     '.btn:disabled{background:#cbd5e1;box-shadow:none}',
     '#loading{text-align:center;padding:100px 20px;color:#64748b;font-size:18px}</style></head>',
-    '<body><div class="header">匯款回報中心</div><div class="container"><div id="loading">正在讀取預約資訊...</div><form id="payForm" style="display:none">',
+    '<body><div class="header">匯款回報中心</div><div class="container"><div id="loading">正在驗證報名資訊...</div><form id="payForm" style="display:none">',
     '<div class="card"><div class="label">預約單號</div><div id="d-oid" class="val"></div><div class="label">預約課程</div><div id="d-name" class="val"></div></div>',
-    '<div class="card"><div class="label">報名姓名</div><input type="text" id="name" placeholder="請輸入真實姓名" required>',
+    '<div class="card"><div class="label">報名姓名</div><input type="text" id="name" placeholder="請輸入姓名" required>',
     '<div class="label">手機號碼</div><input type="tel" id="phone" placeholder="請輸入聯絡電話" required>',
     '<div class="label">匯款後五碼</div><input type="number" id="last5" placeholder="請輸入五碼" required></div>',
     '<button type="submit" class="btn" id="subBtn">確認送出回報</button></form></div>',
     '<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>',
     '<script>',
     'const oid="'+orderId+'", gas="'+env.APPS_SCRIPT_URL+'";',
-    'async function init(){',
+    '// 【診斷修復 2：手機端同步化 init】',
+    'async function start(){',
       'try {',
         'await liff.init({liffId:"2009130603-sXSzvlh2"});',
         'if(!liff.isLoggedIn()){liff.login();return}',
         'const uid=liff.getDecodedIDToken().sub;',
+        '// 強制使用 cors 模式與禁止快取，確保手機端能向 GAS 拿資料',
         'const res=await fetch(gas+"?action=getUserOrders&lineUid="+uid, { mode: "cors", cache: "no-cache" }).then(r=>r.json());',
         'const o=res.data.find(x=>x.orderId===oid);',
-        'if(!o){document.getElementById("loading").innerHTML="⚠️ 找不到此筆單號。";return}',
+        'if(!o){document.getElementById("loading").innerHTML="⚠️ 找不到此筆單號，請確認連結。";return}',
         'if(o.status==="已回報匯款"||o.status==="已確認"){alert("此單已回報過囉！");liff.closeWindow();return}',
         'document.getElementById("d-oid").innerText=o.orderId; document.getElementById("d-name").innerText=o.courseName;',
         'document.getElementById("loading").style.display="none"; document.getElementById("payForm").style.display="block";',
-      '} catch(e) { document.getElementById("loading").innerText="載入異常，請重新點選。"; }',
+      '} catch(e) { document.getElementById("loading").innerText="手機端加載異常，請重試。"; }',
     '}',
     'document.getElementById("payForm").onsubmit=async(e)=>{',
-      'e.preventDefault(); const b=document.getElementById("subBtn"); b.disabled=true; b.innerText="處理中...";',
+      'e.preventDefault(); const b=document.getElementById("subBtn"); b.disabled=true; b.innerText="傳送中...";',
       'try{',
         'const res=await fetch(gas,{method:"POST",mode:"cors",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"reportPayment",data:{orderId:oid,name:document.getElementById("name").value,phone:document.getElementById("phone").value,last5:document.getElementById("last5").value}})});',
         'const r=await res.json(); if(r.status==="success"){alert("回報成功！我們會儘速審核。");liff.closeWindow();}else{alert("失敗："+r.message); b.disabled=false; b.innerText="確認送出回報";}',
       '}catch(e){alert("網路連線錯誤"); b.disabled=false;}',
-    '}; window.onload=init;</script></body></html>'
+    '};',
+    'window.onload = start;',
+    '</script></body></html>'
   ].join("\n");
   return new Response(h, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
 }
 
 export async function handleLiffDescription(cid, env) {
-  // 保持之前邏輯，確保路徑正確
-  return new Response("Desc Page Placeholder", { status: 200 });
+  // 保持現狀
+  return new Response("Desc Placeholder", { status: 200 });
 }
