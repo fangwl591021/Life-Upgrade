@@ -2,7 +2,13 @@ export async function getCourseCategories(env) {
   try { const res = await fetch(env.APPS_SCRIPT_URL + "?action=getCourseCategories", { redirect: "follow" }); const json = await res.json(); return json.data || []; } catch (e) { return []; }
 }
 export async function getCourseList(category, env) {
-  try { const url = env.APPS_SCRIPT_URL + "?action=getCourseList&category=" + encodeURIComponent(category); const res = await fetch(url, { redirect: "follow" }); const json = await res.json(); return json.data || []; } catch (e) { return []; }
+  try { 
+    // 解決中文編碼問題，確保 GAS 收到正確分類名稱
+    const url = env.APPS_SCRIPT_URL + "?action=getCourseList&category=" + encodeURIComponent(category); 
+    const res = await fetch(url, { redirect: "follow" }); 
+    const json = await res.json(); 
+    return json.data || []; 
+  } catch (e) { return []; }
 }
 export async function getUserOrders(lineUid, env) {
   try { const url = env.APPS_SCRIPT_URL + "?action=getUserOrders&lineUid=" + lineUid; const res = await fetch(url, { redirect: "follow" }); const json = await res.json(); return json.data || []; } catch (e) { return []; }
