@@ -2,9 +2,9 @@
 export async function handleLiffPayment(orderId, env) {
   const h = [
     '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>匯款回報</title><style>body{font-family:sans-serif;margin:0;background:#f4f7f9;font-size:16px}.header{background:#1DB446;color:white;padding:30px;text-align:center;font-weight:semibold;font-size:20px}.container{padding:15px;max-width:500px;margin:auto}.card{background:white;border-radius:20px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,0.06);margin-bottom:15px}input{width:100%;padding:15px;border:1px solid #e2e8f0;border-radius:12px;box-sizing:border-box;margin-bottom:16px;outline:none;font-size:16px}.btn{background:#007AFF;color:white;padding:18px;border-radius:16px;border:none;width:100%;font-size:18px;font-weight:semibold;cursor:pointer}.label{font-size:12px;font-weight:bold;color:#94a3b8;text-transform:uppercase;margin-bottom:4px}</style></head>',
-    '<body><div class="header">回報匯款資訊</div><div class="container"><div id="loading" style="text-align:center;padding:50px;color:#64748b;font-size:18px">正在讀取預約資料...</div><form id="payForm" style="display:none">',
+    '<body><div class="header">回報匯款資訊</div><div class="container"><div id="loading" style="text-align:center;padding:50px;color:#64748b;font-size:18px">正在讀取報名資料...</div><form id="payForm" style="display:none">',
     '<div class="card"><div class="label">預約單號</div><div id="d-oid" style="font-weight:semibold;color:#1e293b;font-size:20px;font-family:monospace"></div><div class="label" style="margin-top:16px">預約課程</div><div id="d-name" style="font-size:18px;color:#475569;font-weight:semibold"></div></div>',
-    '<div class="card"><div class="label">報名真實姓名</div><input type="text" id="name" placeholder="請輸入姓名" required><div class="label">聯絡手機</div><input type="tel" id="phone" placeholder="請輸入電話" required><div class="label">匯款帳號末五碼</div><input type="number" id="last5" placeholder="請輸入五碼" required></div>',
+    '<div class="card"><div class="label">報名姓名</div><input type="text" id="name" placeholder="請輸入姓名" required><div class="label">聯絡電話</div><input type="tel" id="phone" placeholder="請輸入電話" required><div class="label">匯款帳號末五碼</div><input type="number" id="last5" placeholder="請輸入五碼" required></div>',
     '<button type="submit" class="btn" id="subBtn">確認送出回報</button></form></div>',
     '<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>',
     '<script>const oid="' + orderId + '", gas="' + env.APPS_SCRIPT_URL + '";',
@@ -13,7 +13,7 @@ export async function handleLiffPayment(orderId, env) {
     'catch(e){document.getElementById("loading").innerText="載入失敗。";}});',
     'document.getElementById("payForm").onsubmit=async(e)=>{e.preventDefault(); document.getElementById("subBtn").disabled=true; document.getElementById("subBtn").innerText="傳送中...";',
     'const res = await fetch(gas, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reportPayment", data: { orderId: oid, name: document.getElementById("name").value, phone: document.getElementById("phone").value, last5: document.getElementById("last5").value } }) });',
-    'const r = await res.json(); if(r.status==="success"){alert("回報成功！我們會儘速處理。"); liff.closeWindow();}else{alert("失敗："+r.message); document.getElementById("subBtn").disabled=false;}};</script></body></html>'
+    'const r = await res.json(); if(r.status==="success"){alert("回報成功！我們會儘速審核。"); liff.closeWindow();}else{alert("失敗："+r.message); document.getElementById("subBtn").disabled=false;}};</script></body></html>'
   ].join("\n");
   return new Response(h, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
 }
