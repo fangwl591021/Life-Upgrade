@@ -18,12 +18,13 @@ export default {
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // 1. 【診斷修復】LIFF 與 路由硬分流 - 解決手機跳轉與點擊問題
-    if (pathname === "/pay") return await handleLiffPayment(orderId, env);
-    if (pathname === "/desc") return await handleLiffDescription(idParam, env);
-    if (pathname === "/admin") return await handleAdminPage(env);
+    // --- 【診斷修復 1：路徑寬容匹配】 ---
+    // 使用 startsWith 確保手機端即便路徑後方帶斜線也能正確進入 LIFF 模組
+    if (pathname.startsWith("/pay")) return await handleLiffPayment(orderId, env);
+    if (pathname.startsWith("/desc")) return await handleLiffDescription(idParam, env);
+    if (pathname.startsWith("/admin")) return await handleAdminPage(env);
 
-    // 2. LINE Webhook 處理 - 解決 WP 沒反應與 AI 搶話
+    // Webhook 處理
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -31,10 +32,9 @@ export default {
         if (!body.events || body.events.length === 0) return new Response("OK");
 
         for (const event of body.events) {
-          // A. 轉發至 WordPress (WP) - 確保轉發最優先且被記錄
+          // 確保轉發 WP 不中斷
           ctx.waitUntil(forwardToWP(bodyText, request.headers, env));
 
-          // B. AI 客服關鍵字處理 (含硬阻斷邏輯)
           if (event.type === "message" && event.message.type === "text") {
             ctx.waitUntil(handleAIRequest(event, env));
           }
@@ -43,6 +43,10 @@ export default {
       } catch (e) { return new Response("OK"); }
     }
 
-    return new Response("LifeUpgrade Service Ready", { status: 200 });
+    // fallback 頁面，若看到此內容代表路徑未匹配
+    return new Response("LifeUpgrade Service Ready", { 
+      status: 200, 
+      headers: { "Content-Type": "text/plain; charset=utf-8" } 
+    });
   }
 };
