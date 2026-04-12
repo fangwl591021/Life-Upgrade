@@ -2,7 +2,6 @@ import { handleAIRequest } from './adk_agent.js';
 import { forwardToWP } from './wp_proxy_handler.js';
 import { handleAdminPage } from './admin_module.js';
 import { handleLiffPayment, handleLiffDescription } from './liff_module.js';
-import { handleStatusPage } from './status_module.js';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,14 +18,12 @@ export default {
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // --- 1. LIFF 專屬路由 (絕對優先，排除後台干擾) ---
+    // 1. LIFF 與後台專屬路徑 (絕對優先，繞過一切邏輯)
+    if (pathname === "/admin") return handleAdminPage(env);
     if (pathname === "/pay") return handleLiffPayment(orderId, env);
     if (pathname === "/desc") return handleLiffDescription(idParam, env);
 
-    // --- 2. 管理後台入口 ---
-    if (pathname === "/admin") return handleAdminPage(env);
-
-    // --- 3. API 代理代理 (同步 GAS) ---
+    // 2. API 代理 (同步 GAS 資料用)
     if (pathname.startsWith("/api/admin/")) {
       const u = request.headers.get("X-Admin-User");
       const p = request.headers.get("X-Admin-Pass");
@@ -34,23 +31,15 @@ export default {
       const action = pathname.replace("/api/admin/", "");
       const gasUrl = env.APPS_SCRIPT_URL + "?action=" + action;
       try {
-        const fetchOptions = { 
-          method: "POST", 
-          redirect: "follow", 
-          headers: { "Content-Type": "text/plain;charset=utf-8" } 
-        };
-        if (request.method === "GET") {
-          fetchOptions.method = "GET";
-          delete fetchOptions.body;
-        } else {
-          fetchOptions.body = await request.text();
-        }
+        const fetchOptions = { method: "POST", redirect: "follow", headers: { "Content-Type": "text/plain;charset=utf-8" } };
+        if (request.method === "GET") { fetchOptions.method = "GET"; delete fetchOptions.body; }
+        else { fetchOptions.body = await request.text(); }
         const gasRes = await fetch(gasUrl, fetchOptions);
         return new Response(await gasRes.text(), { headers: { "Content-Type": "application/json", ...corsHeaders } });
       } catch (e) { return new Response(JSON.stringify({status:"error", message: e.toString()}), { status: 500, headers: corsHeaders }); }
     }
 
-    // --- 4. Webhook 處理 (AI 客服) ---
+    // 3. LINE Webhook 處理
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -58,20 +47,15 @@ export default {
         if (!body.events || body.events.length === 0) return new Response("OK");
         for (const event of body.events) {
           if (event.type === "message" && event.message.type === "text") {
-            const text = event.message.text.trim();
-            const aiKeywords = ["預約", "課程", "報名", "紀錄", "查", "訂單", "取消", "看"];
-            if (aiKeywords.some(k => text.includes(k))) {
-              ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
-              ctx.waitUntil(handleAIRequest(event, env));
-            } else { ctx.waitUntil(forwardToWP(bodyText, request.headers, env)); }
+            ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
+            ctx.waitUntil(handleAIRequest(event, env));
           } else { ctx.waitUntil(forwardToWP(bodyText, request.headers, env)); }
         }
         return new Response("OK");
       } catch (e) { return new Response("OK"); }
     }
 
-    // --- 5. 系統狀態首頁 ---
-    return handleStatusPage();
+    return new Response("Action System Active", { status: 200 });
   }
 };
 
