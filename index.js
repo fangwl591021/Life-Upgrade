@@ -18,12 +18,12 @@ export default {
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // 路由分流
+    // 1. 路由硬分流 (最高優先，避免後台與邏輯互相干擾)
     if (pathname === "/admin") return await handleAdminPage(env);
     if (pathname === "/pay") return await handleLiffPayment(orderId, env);
     if (pathname === "/desc") return await handleLiffDescription(idParam, env);
 
-    // API 代理
+    // 2. 後台 API 代理 (保持與 GAS 同步)
     if (pathname.startsWith("/api/admin/")) {
       const u = request.headers.get("X-Admin-User");
       const p = request.headers.get("X-Admin-Pass");
@@ -31,15 +31,12 @@ export default {
       const action = pathname.replace("/api/admin/", "");
       const gasUrl = env.APPS_SCRIPT_URL + "?action=" + action;
       try {
-        const fetchOptions = { method: "POST", redirect: "follow", headers: { "Content-Type": "text/plain;charset=utf-8" } };
-        if (request.method === "GET") { fetchOptions.method = "GET"; delete fetchOptions.body; }
-        else { fetchOptions.body = await request.text(); }
-        const gasRes = await fetch(gasUrl, fetchOptions);
+        const gasRes = await fetch(gasUrl, { method: "POST", redirect: "follow", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: await request.text() });
         return new Response(await gasRes.text(), { headers: { "Content-Type": "application/json", ...corsHeaders } });
       } catch (e) { return new Response(JSON.stringify({status:"error", message: e.toString()}), { status: 500, headers: corsHeaders }); }
     }
 
-    // Webhook 處理
+    // 3. Webhook (AI 客服與關鍵字功能)
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -47,7 +44,7 @@ export default {
         if (!body.events || body.events.length === 0) return new Response("OK");
         for (const event of body.events) {
           if (event.type === "message" && event.message.type === "text") {
-            ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
+            // 執行 AI 代理 (內含硬攔截邏輯)
             ctx.waitUntil(handleAIRequest(event, env));
           } else { ctx.waitUntil(forwardToWP(bodyText, request.headers, env)); }
         }
@@ -55,10 +52,6 @@ export default {
       } catch (e) { return new Response("OK"); }
     }
 
-    return new Response("LifeUpgrade API Active", { status: 200 });
+    return new Response("LifeUpgrade Active", { status: 200 });
   }
 };
-
-async function triggerLoadingAnimation(u, env) {
-  try { await fetch("https://api.line.me/v2/bot/chat/loading/start", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + env.LINE_CHANNEL_ACCESS_TOKEN }, body: JSON.stringify({ chatId: u, loadingSeconds: 5 }) }); } catch (e) {}
-}
