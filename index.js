@@ -15,25 +15,22 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-    // 1. 路徑正規化
+    // 1. 【深度修復：路徑正規化準則】處理雙斜線問題
     let pathname = url.pathname.replace(/\/+/g, '/');
     if (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1);
 
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // 2. 健康監測與分流 (最高優先級)
+    // 2. 分流邏輯 (最高優先級)
     if (pathname === "/health") return await checkSystemHealth(env);
     if (pathname === "/pay") return await handleLiffPayment(orderId, env);
     if (pathname === "/desc") return await handleLiffDescription(idParam, env);
     if (pathname === "/admin") return await handleAdminPage(env);
 
-    // 3. 【核心修復】API 代理服務 (解決 Admin 登入與 LIFF 網路錯誤)
+    // 3. API 代理服務 (負責後台認證與資料傳輸)
     if (pathname.startsWith("/api/")) {
-      const isPublicAction = pathname.includes("reportPayment") || pathname.includes("getUser");
       const isAdminAction = pathname.startsWith("/api/admin/");
-      
-      // Admin 權限驗證
       if (isAdminAction) {
         const u = request.headers.get("X-Admin-User");
         const p = request.headers.get("X-Admin-Pass");
@@ -44,27 +41,20 @@ export default {
       const gasUrl = env.APPS_SCRIPT_URL + "?action=" + action;
       
       try {
-        let body = null;
-        if (request.method === "POST") {
-          body = await request.text();
-        }
-        
-        const gasRes = await fetch(gasUrl, {
-          method: request.method,
-          redirect: "follow",
-          headers: { "Content-Type": "application/json" },
-          body: body
+        let bodyText = (request.method === "POST") ? await request.text() : null;
+        const gasRes = await fetch(gasUrl, { 
+          method: request.method, 
+          redirect: "follow", 
+          headers: { "Content-Type": "application/json" }, 
+          body: bodyText 
         });
-        
-        return new Response(await gasRes.text(), { 
-          headers: { "Content-Type": "application/json", ...corsHeaders } 
-        });
+        return new Response(await gasRes.text(), { headers: { "Content-Type": "application/json", ...corsHeaders } });
       } catch (e) {
         return new Response(JSON.stringify({status:"error", message: e.toString()}), { status: 500, headers: corsHeaders });
       }
     }
 
-    // 4. Webhook 處理
+    // 4. Webhook 核心 (AI 與 WP 同步)
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -72,8 +62,11 @@ export default {
         if (!body.events || body.events.length === 0) return new Response("OK");
 
         for (const event of body.events) {
+          // 確保同步轉發至 WP
           ctx.waitUntil(forwardToWP(bodyText, request.headers, env));
+
           if (event.type === "message" && event.message.type === "text") {
+            // 先啟動動畫，後執行邏輯
             ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
             ctx.waitUntil(handleAIRequest(event, env));
           }
@@ -82,7 +75,7 @@ export default {
       } catch (e) { return new Response("OK"); }
     }
 
-    return new Response("LifeUpgrade Service Active", { status: 200 });
+    return new Response("LifeUpgrade Service Ready", { status: 200 });
   }
 };
 
