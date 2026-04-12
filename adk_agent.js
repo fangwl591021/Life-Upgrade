@@ -5,19 +5,19 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // --- 1. 意圖攔截器 (最優先，執行完立即 return) ---
+  // --- 1. 核心意圖硬攔截 (最優先等級，執行後強制 return，絕不進入 AI) ---
 
-  // 分類課程查詢 (第二層)
+  // 意圖 A: 分類查詢 (第二層) - 解決鬼打牆
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const catName = categoryMatch[1].trim();
     const courses = await getCourseList(catName, env);
     if (courses && courses.length > 0) {
-      return await replyToLINE(event.replyToken, "這是「" + catName + "」的最新課程細項：", generateCourseFlexMessage(courses), env);
+      return await replyToLINE(event.replyToken, "這是「" + catName + "」的最新課程：", generateCourseFlexMessage(courses), env);
     }
   }
 
-  // 報名指令 (Regex)
+  // 意圖 B: 處理報名指令 (Regex)
   const orderMatch = userMessage.match(/我想預約\s*([\s\S]+?)\s*\([\s\u3000]*編號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*[:：][\s\u3000]*(\d+)[\s\u3000]*\)/);
   if (orderMatch) {
     const courseId = orderMatch[2].trim();
@@ -25,39 +25,40 @@ export async function handleAIRequest(event, env) {
     try {
       const profile = await getUserProfile(userId, env);
       if (!profile || !profile.name) {
-        return await replyToLINE(event.replyToken, "您尚未完成註冊喔！✨\n請點選選單中的「會員中心」填寫真實姓名，再進行報名，謝謝。", null, env);
+        return await replyToLINE(event.replyToken, "您尚未完成註冊喔！✨\n請點選選單中的「會員中心」填寫姓名與手機，再進行報名，謝謝配合。", null, env);
       }
       await createOrder({ lineUid: userId, userName: profile.name, userPhone: profile.phone, courseId: courseId, amount: amount }, env);
       const orders = await getUserOrders(userId, env);
       return await replyToLINE(event.replyToken, "感謝您的預約！✨ 請點擊下方按鈕完成匯款回報。", generateOrderListFlexMessage(orders), env);
     } catch (e) {
-      return await callDualEngineAI(event, "預約處理中，但目前獲取確認卡片稍慢，請輸入「我的預約」查看。", env);
+      return await callDualEngineAI(event, "預約已寫入資料庫，但卡片生成異常，請引導使用者輸入「我的預約」查看。", env);
     }
   }
 
-  // 查看選單或想報名
-  if (userMessage.includes("看課程") || userMessage === "我想報名" || userMessage.includes("選單")) {
+  // 意圖 C: 基礎選單查詢 (看課程)
+  const keywordsListing = ["看課程", "課程選單", "我想報名", "我想看課程"];
+  if (keywordsListing.some(k => userMessage === k)) {
     const cats = await getCourseCategories(env);
     if (cats && cats.length > 0) {
       return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
     }
   }
 
-  // 查詢紀錄
-  if (userMessage.includes("我的預約") || userMessage.includes("我的報名")) {
+  // 意圖 D: 查詢我的預約紀錄
+  if (userMessage.includes("我的預約") || userMessage.includes("報名紀錄")) {
     const orders = await getUserOrders(userId, env);
     if (orders && orders.length > 0) return await replyToLINE(event.replyToken, "這是您的預約紀錄：", generateOrderListFlexMessage(orders), env);
     return await replyToLINE(event.replyToken, "目前查無紀錄喔！", null, env);
   }
 
-  // --- 2. 雙 API 備援 (GPT-4o 優先) ---
+  // --- 2. 雙引擎 Failover (GPT-4o 優先來處理閒聊) ---
   return await callDualEngineAI(event, userMessage, env);
 }
 
 async function callDualEngineAI(event, userMessage, env) {
-  const systemPrompt = "你是專業客服。嚴格禁止虛構課程。模擬 LINE 原生格式，不加粗、不包框。";
+  const systemPrompt = "你是人生進化 Action 專業客服。模擬 LINE 原生資訊流，不包框、不加粗。嚴禁虛構課程，若問及課程請引導使用者點擊選單。";
   
-  // 1. 先試 GPT-4o (第一順位)
+  // 1. 優先使用 GPT-4o (邏輯較穩)
   try {
     const oRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -69,7 +70,7 @@ async function callDualEngineAI(event, userMessage, env) {
     if (oText) return await replyToLINE(event.replyToken, oText, null, env);
   } catch (e) {}
 
-  // 2. 備援 Gemini (第二順位)
+  // 2. 備援 Gemini
   try {
     const gRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + env.GEMINI_API_KEY, {
       method: "POST",
@@ -81,7 +82,7 @@ async function callDualEngineAI(event, userMessage, env) {
     if (gText) return await replyToLINE(event.replyToken, gText, null, env);
   } catch (e) {}
 
-  await replyToLINE(event.replyToken, "系統稍嫌忙碌，請稍後再試。", null, env);
+  await replyToLINE(event.replyToken, "系統忙碌中，請稍後再試。", null, env);
 }
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
