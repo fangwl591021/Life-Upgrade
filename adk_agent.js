@@ -5,20 +5,20 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // --- 【準則 2：硬攔截優先順位】 ---
-  // 偵測到指令，處理完畢必須立即 return，絕對禁止進入 AI 聊天區。
+  // --- 【自我診斷：硬攔截優先順位】 ---
+  // 匹配關鍵字後發送完畢立即 return，物理切斷 AI 引擎呼叫路徑。
 
-  // 1. 分類查詢 (第二層) - 解決鬼打牆
+  // 1. 第二層：分類明細查詢 (解決鬼打牆)
   const categoryMatch = userMessage.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
   if (categoryMatch) {
     const catName = categoryMatch[1].trim();
     const courses = await getCourseList(catName, env);
     if (courses && courses.length > 0) {
-      return await replyToLINE(event.replyToken, "這是「" + catName + "」的精選課程：", generateCourseFlexMessage(courses), env);
+      return await replyToLINE(event.replyToken, "這是「" + catName + "」分類的最新課程：", generateCourseFlexMessage(courses), env);
     }
   }
 
-  // 2. 處理報名預約 (Regex)
+  // 2. 報名預約指令
   const orderMatch = userMessage.match(/我想預約\s*([\s\S]+?)\s*\([\s\u3000]*編號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*[:：][\s\u3000]*(\d+)[\s\u3000]*\)/);
   if (orderMatch) {
     const courseId = orderMatch[2].trim();
@@ -26,41 +26,40 @@ export async function handleAIRequest(event, env) {
     try {
       const profile = await getUserProfile(userId, env);
       if (!profile || !profile.name) {
-        return await replyToLINE(event.replyToken, "您尚未完成註冊喔！✨\n請先至「會員中心」填寫真實姓名與手機。", null, env);
+        return await replyToLINE(event.replyToken, "您尚未完成註冊喔！✨\n請點選選單中的「會員中心」填寫真實姓名，再進行預約報名。", null, env);
       }
       await createOrder({ lineUid: userId, userName: profile.name, userPhone: profile.phone, courseId: courseId, amount: amount }, env);
       const orders = await getUserOrders(userId, env);
+      // 發送 Flex 確認後立即結束執行
       return await replyToLINE(event.replyToken, "感謝您的預約！✨ 請點擊下方按鈕完成匯款回報。", generateOrderListFlexMessage(orders), env);
     } catch (e) {
-      return await replyToLINE(event.replyToken, "系統忙碌中，報名可能已送出，請過幾分鐘輸入「我的預約」查看結果。", null, env);
+      return await replyToLINE(event.replyToken, "預約已處理中，但目前卡片獲取稍慢，請輸入「我的預約」查詢結果。", null, env);
     }
   }
 
-  // 3. 基礎選單 (看課程)
+  // 3. 第一層：查看課程大類
   if (userMessage.includes("看課程") || userMessage === "我想報名" || userMessage === "選單") {
     const cats = await getCourseCategories(env);
     if (cats && cats.length > 0) {
       return await replyToLINE(event.replyToken, "請選擇您感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
     }
-    return await replyToLINE(event.replyToken, "目前暫無課程開放預約。", null, env);
+    return await replyToLINE(event.replyToken, "目前暫無課程開放預約，請稍後再試。", null, env);
   }
 
-  // 4. 我的紀錄
+  // 4. 個人預約紀錄
   if (userMessage.includes("我的預約") || userMessage.includes("紀錄")) {
     const orders = await getUserOrders(userId, env);
-    if (orders && orders.length > 0) {
-      return await replyToLINE(event.replyToken, "這是您的預約紀錄：", generateOrderListFlexMessage(orders), env);
-    }
-    return await replyToLINE(event.replyToken, "目前查無紀錄喔！", null, env);
+    if (orders && orders.length > 0) return await replyToLINE(event.replyToken, "以下是您的預約紀錄：", generateOrderListFlexMessage(orders), env);
+    return await replyToLINE(event.replyToken, "目前查無預約紀錄喔！", null, env);
   }
 
-  // --- 【準則 3：AI 服從性診斷】 ---
-  // GPT-4o 優先順位，執行嚴格命令，不准聊天
+  // --- 【準則：AI 服從性診斷】 ---
+  // GPT-4o 優先，禁止閒聊。執行完畢後絕不再發送多餘詢問。
   return await callDualEngineAI(event, userMessage, env);
 }
 
 async function callDualEngineAI(event, userMessage, env) {
-  const systemPrompt = "你是專業客服。嚴格禁止虛構課程，嚴格禁止閒聊。若問及非本系統課程或閒聊，請回覆：『抱歉，我只能協助本系統相關課程諮詢，請參考功能選單。』格式：不加粗、不包框、不主動詢問。";
+  const systemPrompt = "你是專業客服。嚴格禁止虛構課程，嚴格禁止閒聊。若問及非課程功能，請回覆：『抱歉，我只能協助課程諮詢，請點選選單查詢。』格式：不加粗、不包框。";
   
   try {
     const oRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -73,7 +72,7 @@ async function callDualEngineAI(event, userMessage, env) {
     if (text) return await replyToLINE(event.replyToken, text, null, env);
   } catch (e) {}
 
-  // 最終備援 Gemini
+  // 備援 Gemini 僅在此時啟動
   try {
     const gRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + env.GEMINI_API_KEY, {
       method: "POST",
