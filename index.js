@@ -18,36 +18,25 @@ export default {
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // 【自我診斷修復】路由路徑加強匹配，防止跳過
-    if (pathname === "/pay" || pathname === "/pay/") return await handleLiffPayment(orderId, env);
-    if (pathname === "/desc" || pathname === "/desc/") return await handleLiffDescription(idParam, env);
-    if (pathname === "/admin" || pathname === "/admin/") return await handleAdminPage(env);
+    // 1. 【診斷修復】LIFF 與 路由硬分流 - 解決手機跳轉與點擊問題
+    if (pathname === "/pay") return await handleLiffPayment(orderId, env);
+    if (pathname === "/desc") return await handleLiffDescription(idParam, env);
+    if (pathname === "/admin") return await handleAdminPage(env);
 
-    // API 代理轉發
-    if (pathname.startsWith("/api/admin/")) {
-      const u = request.headers.get("X-Admin-User");
-      const p = request.headers.get("X-Admin-Pass");
-      if (u !== env.ADMIN_USERNAME || p !== env.ADMIN_PASSWORD) return new Response("Unauthorized", { status: 401 });
-      const action = pathname.replace("/api/admin/", "");
-      const gasUrl = env.APPS_SCRIPT_URL + "?action=" + action;
-      try {
-        const bodyText = (request.method === "POST") ? await request.text() : null;
-        const gasRes = await fetch(gasUrl, { method: request.method, headers: { "Content-Type": "application/json" }, body: bodyText });
-        return new Response(await gasRes.text(), { headers: { "Content-Type": "application/json", ...corsHeaders } });
-      } catch (e) { return new Response(JSON.stringify({status:"error", message: e.toString()}), { status: 500, headers: corsHeaders }); }
-    }
-
-    // Webhook 處理
+    // 2. LINE Webhook 處理 - 解決 WP 沒反應與 AI 搶話
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
         const body = JSON.parse(bodyText);
         if (!body.events || body.events.length === 0) return new Response("OK");
+
         for (const event of body.events) {
+          // A. 轉發至 WordPress (WP) - 確保轉發最優先且被記錄
+          ctx.waitUntil(forwardToWP(bodyText, request.headers, env));
+
+          // B. AI 客服關鍵字處理 (含硬阻斷邏輯)
           if (event.type === "message" && event.message.type === "text") {
             ctx.waitUntil(handleAIRequest(event, env));
-          } else {
-            ctx.waitUntil(forwardToWP(bodyText, request.headers, env));
           }
         }
         return new Response("OK");
