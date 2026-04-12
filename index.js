@@ -18,20 +18,18 @@ export default {
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // 1. 專屬模組分流 (路由中心)
+    // 1. 模組化分流路由 (確保絕對優先，不進入後台認證)
     if (pathname === "/admin") return handleAdminPage(env);
     if (pathname === "/pay") return handleLiffPayment(orderId, env);
     if (pathname === "/desc") return handleLiffDescription(idParam, env);
 
-    // 2. 後台 API 代理服務
+    // 2. 後台 API 代理轉發
     if (pathname.startsWith("/api/admin/")) {
       const u = request.headers.get("X-Admin-User");
       const p = request.headers.get("X-Admin-Pass");
       if (u !== env.ADMIN_USERNAME || p !== env.ADMIN_PASSWORD) return new Response("Unauthorized", { status: 401 });
-      
       const action = pathname.replace("/api/admin/", "");
       const gasUrl = env.APPS_SCRIPT_URL + "?action=" + action;
-      
       try {
         const fetchOptions = { 
           method: "POST", 
@@ -42,13 +40,12 @@ export default {
           fetchOptions.method = "GET";
           delete fetchOptions.body;
         } else { fetchOptions.body = await request.text(); }
-        
         const gasRes = await fetch(gasUrl, fetchOptions);
         return new Response(await gasRes.text(), { headers: { "Content-Type": "application/json", ...corsHeaders } });
       } catch (e) { return new Response(JSON.stringify({status:"error", message: e.toString()}), { status: 500, headers: corsHeaders }); }
     }
 
-    // 3. Webhook (AI 分流)
+    // 3. LINE Webhook (意圖識別)
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -57,7 +54,7 @@ export default {
         for (const event of body.events) {
           if (event.type === "message" && event.message.type === "text") {
             const text = event.message.text.trim();
-            const aiKeywords = ["預約", "課程", "報名", "紀錄", "查", "訂單", "取消", "看"];
+            const aiKeywords = ["預約", "課程", "報名", "紀錄", "查", "訂單", "取消", "看", "想"];
             if (aiKeywords.some(k => text.includes(k))) {
               ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
               ctx.waitUntil(handleAIRequest(event, env));
@@ -78,12 +75,12 @@ async function triggerLoadingAnimation(u, env) {
 
 function handleStatusPage() {
   const h = [
-    '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Action Pro</title><script src="https://cdn.tailwindcss.com"></script></head>',
+    '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>人生進化 Action</title><script src="https://cdn.tailwindcss.com"></script></head>',
     '<body class="bg-slate-50 flex items-center justify-center min-h-screen font-sans">',
     '<div class="max-w-md w-full bg-white p-12 rounded-[2.5rem] shadow-xl text-center border border-slate-100">',
     '<h1 class="text-2xl font-semibold text-slate-800 mb-6 tracking-tight">人生進化 Action</h1>',
-    '<p class="text-slate-500 mb-8">系統模組化運行中。</p>',
-    '<a href="/admin" class="block bg-blue-600 text-white py-4 rounded-xl font-medium shadow-lg transition hover:bg-blue-700">登入管理後台</a>',
+    '<p class="text-slate-500 mb-8">系統模組化部署完成。</p>',
+    '<a href="/admin" class="block bg-blue-600 text-white py-4 rounded-xl font-medium shadow-lg transition hover:bg-blue-700 text-lg">進入管理系統</a>',
     '</div></body></html>'
   ].join("");
   return new Response(h, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
