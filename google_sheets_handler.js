@@ -3,7 +3,6 @@ export async function getCourseCategories(env) {
 }
 export async function getCourseList(category, env) {
   try { 
-    // 解決中文編碼問題，確保 GAS 收到正確分類名稱
     const url = env.APPS_SCRIPT_URL + "?action=getCourseList&category=" + encodeURIComponent(category); 
     const res = await fetch(url, { redirect: "follow" }); 
     const json = await res.json(); 
@@ -20,7 +19,7 @@ export async function createOrder(data, env) {
   try { await fetch(env.APPS_SCRIPT_URL, { 
     method: "POST", 
     redirect: "follow",
-    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+    headers: { "Content-Type": "application/json" }, 
     body: JSON.stringify({ action: "createOrder", data: data })
   }); } catch (e) {}
 }
