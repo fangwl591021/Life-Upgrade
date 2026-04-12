@@ -14,17 +14,22 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-    const pathname = url.pathname;
+    // --- 【深度診斷修復：路徑正規化】 ---
+    // 解決手機端或跳轉產生的雙斜線問題 (如 //pay 轉為 /pay)
+    let pathname = url.pathname.replace(/\/+/g, '/');
+    if (pathname.length > 1 && pathname.endsWith('/')) {
+      pathname = pathname.slice(0, -1);
+    }
+
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // --- 【診斷修復 1：路徑寬容匹配】 ---
-    // 使用 startsWith 確保手機端即便路徑後方帶斜線也能正確進入 LIFF 模組
-    if (pathname.startsWith("/pay")) return await handleLiffPayment(orderId, env);
-    if (pathname.startsWith("/desc")) return await handleLiffDescription(idParam, env);
-    if (pathname.startsWith("/admin")) return await handleAdminPage(env);
+    // 1. LIFF 與 路由硬分流 (使用正規化後的 pathname)
+    if (pathname === "/pay") return await handleLiffPayment(orderId, env);
+    if (pathname === "/desc") return await handleLiffDescription(idParam, env);
+    if (pathname === "/admin") return await handleAdminPage(env);
 
-    // Webhook 處理
+    // 2. Webhook 處理 (AI 助理與 WordPress 轉發)
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -32,9 +37,10 @@ export default {
         if (!body.events || body.events.length === 0) return new Response("OK");
 
         for (const event of body.events) {
-          // 確保轉發 WP 不中斷
+          // A. 轉發至 WordPress (WP) 
           ctx.waitUntil(forwardToWP(bodyText, request.headers, env));
 
+          // B. AI 客服關鍵字處理
           if (event.type === "message" && event.message.type === "text") {
             ctx.waitUntil(handleAIRequest(event, env));
           }
@@ -43,7 +49,7 @@ export default {
       } catch (e) { return new Response("OK"); }
     }
 
-    // fallback 頁面，若看到此內容代表路徑未匹配
+    // fallback 頁面
     return new Response("LifeUpgrade Service Ready", { 
       status: 200, 
       headers: { "Content-Type": "text/plain; charset=utf-8" } 
