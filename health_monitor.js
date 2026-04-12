@@ -2,75 +2,64 @@ import { sendTelegramMessage } from './telegram_notifier.js';
 
 export async function checkSystemHealth(env) {
   const startTime = Date.now();
-  const results = {
+  const reports = {
     timestamp: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }),
-    overall_status: "Healthy",
-    webhook_health: "Optimal",
-    latency: 0,
+    overall_status: "正常 (Healthy)",
+    webhook_health: "優良 (Optimal)",
+    latency: "",
     checks: []
   };
 
-  // 1. 偵測 Webhook 核心：GAS 資料庫連線
+  // 1. 偵測 GAS 資料庫 (Webhook 核心)
   try {
-    const gasRes = await fetch(env.APPS_SCRIPT_URL + "?action=getCourseCategories", { 
-      method: "GET",
-      redirect: "follow" 
+    const gasStart = Date.now();
+    const gasRes = await fetch(`${env.APPS_SCRIPT_URL}?action=getCourseCategories`);
+    const gasData = await gasRes.json();
+    const gasTime = Date.now() - gasStart;
+    const isOk = gasData.status === "success";
+    reports.checks.push({
+      項目: "GAS 資料庫連線 (Database)",
+      狀態: isOk ? "通過 (Pass)" : "失敗 (Fail)",
+      說明: isOk ? "資料庫通訊正常，AI 關鍵字功能可用。" : "資料庫無回應，可能影響報名與查詢。",
+      延遲: gasTime + "ms"
     });
-    const isGasOk = gasRes.ok;
-    results.checks.push({
-      item: "GAS_Database_API",
-      status: isGasOk ? "Pass" : "Fail",
-      detail: isGasOk ? "Normal Communication" : `HTTP_${gasRes.status}`
-    });
-    if (!isGasOk) results.overall_status = "Unhealthy";
+    if (!isOk) reports.overall_status = "異常 (Unhealthy)";
   } catch (e) {
-    results.checks.push({ item: "GAS_Database_API", status: "Critical", detail: "Connection Timeout" });
-    results.overall_status = "Unhealthy";
+    reports.checks.push({ 項目: "GAS 資料庫連線", 狀態: "嚴重 (Critical)", 說明: "GAS 伺服器斷線或 ID 錯誤。" });
+    reports.overall_status = "故障 (Critical)";
   }
 
-  // 2. 偵測 Webhook 核心：WordPress Proxy 轉發點
+  // 2. 偵測 WP 轉發代理
   try {
     const wpRes = await fetch(env.WP_WEBHOOK_URL, { method: "HEAD" });
-    const isWpOk = wpRes.status < 500; // 允許 403/401 代表伺服器在線
-    results.checks.push({
-      item: "WP_Forwarding_Proxy",
-      status: isWpOk ? "Pass" : "Down",
-      detail: isWpOk ? "Endpoint Reachable" : "WP Server Offline"
+    const isOk = wpRes.status < 500;
+    reports.checks.push({
+      項目: "WP 轉發代理 (Proxy)",
+      狀態: isOk ? "通過 (Pass)" : "斷聯 (Offline)",
+      說明: isOk ? "WordPress 接收端在線，資料同步正常。" : "WordPress 伺服器異常，Webhook 無法轉發。"
     });
-    if (!isWpOk) results.webhook_health = "Degraded";
   } catch (e) {
-    results.checks.push({ item: "WP_Forwarding_Proxy", status: "Critical", detail: "DNS or URL Error" });
-    results.webhook_health = "Degraded";
+    reports.checks.push({ 項目: "WP 轉發代理", 狀態: "故障", 說明: "WP Webhook 網址無效。" });
   }
 
-  // 3. 偵測環境變數配置 (避免 wrangler.toml 漏設定)
-  const requiredVars = ["LINE_CHANNEL_ACCESS_TOKEN", "APPS_SCRIPT_URL", "WP_WEBHOOK_URL", "OPENAI_API_KEY"];
-  const missingVars = requiredVars.filter(v => !env[v]);
-  results.checks.push({
-    item: "Environment_Config",
-    status: missingVars.length === 0 ? "Pass" : "Warning",
-    detail: missingVars.length === 0 ? "All Vars Ready" : `Missing: ${missingVars.join(", ")}`
+  // 3. 偵測環境變數
+  const vars = ["LINE_CHANNEL_ACCESS_TOKEN", "APPS_SCRIPT_URL", "WP_WEBHOOK_URL"];
+  const missing = vars.filter(v => !env[v]);
+  reports.checks.push({
+    項目: "系統變數配置 (ENV)",
+    狀態: missing.length === 0 ? "通過" : "警告",
+    說明: missing.length === 0 ? "所有金鑰配置齊全。" : `遺漏：${missing.join(", ")}`
   });
 
-  results.latency = (Date.now() - startTime) + "ms";
+  reports.latency = (Date.now() - startTime) + "ms";
 
-  // 【主動預警】若 Webhook 或 資料庫任一環節出錯，立即發送 TG
-  if (results.overall_status !== "Healthy" || results.webhook_health !== "Optimal") {
-    const alertMsg = [
-      `🚨 <b>人生進化 Action：Webhook 異常警報</b>`,
-      `------------------`,
-      `🔴 系統狀態：${results.overall_status}`,
-      `🟠 Webhook：${results.webhook_health}`,
-      `⏰ 時間：${results.timestamp}`,
-      `⏱️ 延遲：${results.latency}`,
-      `🔍 診斷細節：`,
-      results.checks.map(c => `${c.status === "Pass" ? "✅" : "❌"} ${c.item}: ${c.detail}`).join("\n")
-    ].join("\n");
-    
-    await sendTelegramMessage(alertMsg, env);
+  // 【主動預警】發生異常即發送 TG
+  if (reports.overall_status !== "正常 (Healthy)") {
+    const alert = `🚨 <b>人生進化 Action：系統健康警報</b>\n------------------\n狀態：${reports.overall_status}\n時間：${reports.timestamp}\n細節：${reports.latency}\n請立即檢查！`;
+    await sendTelegramMessage(alert, env);
   }
 
-  return new Response(JSON.stringify(results, null, 2), {
-    headers: { "Content-Type": "application/json;charset=utf-8" }
+  return new Response(JSON.stringify(reports, null, 2), {
+    headers: { "Content-Type": "application/json; charset=utf-8" }
   });
 }
