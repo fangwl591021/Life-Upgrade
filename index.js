@@ -18,12 +18,12 @@ export default {
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // 1. LIFF 與後台專屬路徑 (絕對優先，繞過一切邏輯)
-    if (pathname === "/admin") return handleAdminPage(env);
-    if (pathname === "/pay") return handleLiffPayment(orderId, env);
-    if (pathname === "/desc") return handleLiffDescription(idParam, env);
+    // 1. 模組化路由分流 (最高優先權)
+    if (pathname === "/admin") return await handleAdminPage(env);
+    if (pathname === "/pay") return await handleLiffPayment(orderId, env);
+    if (pathname === "/desc") return await handleLiffDescription(idParam, env);
 
-    // 2. API 代理 (同步 GAS 資料用)
+    // 2. API 代理服務 (同步 GAS)
     if (pathname.startsWith("/api/admin/")) {
       const u = request.headers.get("X-Admin-User");
       const p = request.headers.get("X-Admin-Pass");
@@ -31,15 +31,23 @@ export default {
       const action = pathname.replace("/api/admin/", "");
       const gasUrl = env.APPS_SCRIPT_URL + "?action=" + action;
       try {
-        const fetchOptions = { method: "POST", redirect: "follow", headers: { "Content-Type": "text/plain;charset=utf-8" } };
-        if (request.method === "GET") { fetchOptions.method = "GET"; delete fetchOptions.body; }
-        else { fetchOptions.body = await request.text(); }
+        const fetchOptions = { 
+          method: "POST", 
+          redirect: "follow", 
+          headers: { "Content-Type": "text/plain;charset=utf-8" } 
+        };
+        if (request.method === "GET") {
+          fetchOptions.method = "GET";
+          delete fetchOptions.body;
+        } else {
+          fetchOptions.body = await request.text();
+        }
         const gasRes = await fetch(gasUrl, fetchOptions);
         return new Response(await gasRes.text(), { headers: { "Content-Type": "application/json", ...corsHeaders } });
       } catch (e) { return new Response(JSON.stringify({status:"error", message: e.toString()}), { status: 500, headers: corsHeaders }); }
     }
 
-    // 3. LINE Webhook 處理
+    // 3. Webhook 入口
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -47,7 +55,9 @@ export default {
         if (!body.events || body.events.length === 0) return new Response("OK");
         for (const event of body.events) {
           if (event.type === "message" && event.message.type === "text") {
+            // 確保調用 AI 代理前啟動 Loading
             ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
+            // 必須 await 處理過程
             ctx.waitUntil(handleAIRequest(event, env));
           } else { ctx.waitUntil(forwardToWP(bodyText, request.headers, env)); }
         }
@@ -55,7 +65,7 @@ export default {
       } catch (e) { return new Response("OK"); }
     }
 
-    return new Response("Action System Active", { status: 200 });
+    return new Response("LifeUpgrade API Active", { status: 200 });
   }
 };
 
