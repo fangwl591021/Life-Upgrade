@@ -5,7 +5,7 @@ export async function handleAIRequest(event, env) {
   const userMessage = event.message.text.trim();
   const userId = event.source.userId;
 
-  // 1. 識別報名預約指令 (Regex 強阻斷，執行完畢立即 return)
+  // 1. 識別報名意圖 ( Regex 強力匹配並強制 Return 阻斷 )
   const orderMatch = userMessage.match(/我想預約\s*([\s\S]+?)\s*\([\s\u3000]*編號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*,[\s\u3000]*金額[\s\u3000]*[:：][\s\u3000]*(\d+)[\s\u3000]*\)/);
   if (orderMatch) {
     const courseId = orderMatch[2].trim();
@@ -13,38 +13,39 @@ export async function handleAIRequest(event, env) {
     try {
       const profile = await getUserProfile(userId, env);
       if (!profile || !profile.name) {
-        return await replyToLINE(event.replyToken, "您尚未完成註冊喔！✨\n請點選選單中的「會員中心」填寫真實姓名與手機，再進行報名，謝謝。", null, env);
+        return await replyToLINE(event.replyToken, "您尚未完成註冊喔！✨\n請點選選單中的「會員中心」填寫真實姓名與手機，再進行報名，謝謝配合。", null, env);
       }
+      // 執行寫入
       await createOrder({ lineUid: userId, userName: profile.name, userPhone: profile.phone, courseId: courseId, amount: amount }, env);
       const orders = await getUserOrders(userId, env);
-      // 核心修正：發送完畢立即 Return，阻斷 AI 搶話
+      // 關鍵修復：發送完畢立即 Return，阻斷 AI 發言
       return await replyToLINE(event.replyToken, "感謝您的預約！✨ 請點擊下方按鈕完成匯款回報。", generateOrderListFlexMessage(orders), env);
     } catch (e) {
-      return await callDualEngineAI(event, "您的預約已受理，但目前獲取確認卡片稍慢，請輸入「我的預約」查看。", env);
+      return await callDualEngineAI(event, "您的預約已受理，但目前網路繁忙，預約卡片稍後可透過「我的預約」查詢。", env);
     }
   }
 
-  // 2. 識別查詢意圖 (看課程)
+  // 2. 識別查詢與選單 (同樣強制 Return)
   if (userMessage.includes("看課程") || userMessage.includes("想報名") || userMessage.includes("課程選單")) {
     try {
       const cats = await getCourseCategories(env);
-      if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, "目前暫無課程開放預約。", null, env);
-      return await replyToLINE(event.replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
+      if (!cats || cats.length === 0) return await replyToLINE(event.replyToken, "目前暫無開放預約課程。", null, env);
+      return await replyToLINE(event.replyToken, "請選擇感興趣的課程階段：", generateCategoryFlexMessage(cats), env);
     } catch(e) { return await replyToLINE(event.replyToken, "系統忙碌中，請稍後再試。", null, env); }
   }
 
   if (userMessage.includes("我的預約") || userMessage.includes("我的報名")) {
     const orders = await getUserOrders(userId, env);
-    if (orders && orders.length > 0) return await replyToLINE(event.replyToken, "以下是您的預約紀錄：", generateOrderListFlexMessage(orders), env);
+    if (orders && orders.length > 0) return await replyToLINE(event.replyToken, "這是您的最新預約紀錄：", generateOrderListFlexMessage(orders), env);
     return await replyToLINE(event.replyToken, "目前查無預約紀錄喔！", null, env);
   }
 
-  // 3. AI 雙引擎 Failover
+  // 3. AI 雙引擎 Failover (僅處理閒聊)
   return await callDualEngineAI(event, userMessage, env);
 }
 
 async function callDualEngineAI(event, userMessage, env) {
-  const systemPrompt = "你是專業客服。嚴格禁止虛構課程。模擬 LINE 原生資訊流，不加粗、不包框。";
+  const systemPrompt = "你是專業客服。嚴格禁止虛構課程資料。模擬 LINE 原生資訊流，不加粗、不包框。";
   try {
     const gRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + env.GEMINI_API_KEY, {
       method: "POST",
@@ -66,14 +67,10 @@ async function callDualEngineAI(event, userMessage, env) {
     const oText = oData.choices?.[0]?.message?.content;
     if (oText) return await replyToLINE(event.replyToken, oText, null, env);
   } catch (e) {}
-  await replyToLINE(event.replyToken, "系統異常，請稍後再試。", null, env);
+  await replyToLINE(event.replyToken, "系統目前稍嫌忙碌，請稍後再試。", null, env);
 }
 
 async function replyToLINE(replyToken, text, flexMessage, env) {
   const messages = []; if (text) messages.push({ type: "text", text: text }); if (flexMessage) messages.push(flexMessage);
-  await fetch("https://api.line.me/v2/bot/message/reply", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + env.LINE_CHANNEL_ACCESS_TOKEN },
-    body: JSON.stringify({ replyToken: replyToken, messages: messages })
-  });
+  await fetch("https://api.line.me/v2/bot/message/reply", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + env.LINE_CHANNEL_ACCESS_TOKEN }, body: JSON.stringify({ replyToken: replyToken, messages: messages }) });
 }
