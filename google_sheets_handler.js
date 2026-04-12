@@ -11,10 +11,13 @@ export async function getUserProfile(lineUid, env) {
   try { const url = env.APPS_SCRIPT_URL + '?action=getUserProfile&lineUid=' + lineUid; const res = await fetch(url, { redirect: 'follow' }); const json = await res.json(); return json.data || null; } catch (e) { return null; }
 }
 export async function createOrder(data, env) {
-  try { await fetch(env.APPS_SCRIPT_URL, { 
-    method: 'POST', 
-    redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-    body: JSON.stringify({ action: 'createOrder', data: data })
-  }); } catch (e) {}
+  try { 
+    const res = await fetch(env.APPS_SCRIPT_URL, { 
+      method: 'POST', 
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+      body: JSON.stringify({ action: 'createOrder', data: data })
+    }); 
+    return await res.json();
+  } catch (e) { throw e; }
 }
