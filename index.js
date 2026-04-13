@@ -15,54 +15,39 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-    // 1. 路徑正規化 (處理 //pay 或末尾斜線)
+    // 1. 路徑正規化
     let pathname = url.pathname.replace(/\/+/g, '/');
     if (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1);
 
     const orderId = url.searchParams.get("orderId");
     const idParam = url.searchParams.get("id");
 
-    // 2. 路由優先權分流
+    // 2. 路由分流
     if (pathname === "/health") return await checkSystemHealth(env);
     if (pathname === "/pay") return await handleLiffPayment(orderId, env);
     if (pathname === "/desc") return await handleLiffDescription(idParam, env);
     if (pathname === "/admin") return await handleAdminPage(env);
 
-    // 3. 【核心診斷修復】API 代理與參數透傳 - 解決「單號不存在」與「登入失敗」
+    // 3. API 代理
     if (pathname.startsWith("/api/")) {
       const isAdminAction = pathname.startsWith("/api/admin/");
       const u = request.headers.get("X-Admin-User");
       const p = request.headers.get("X-Admin-Pass");
-
       if (isAdminAction && (u !== env.ADMIN_USERNAME || p !== env.ADMIN_PASSWORD)) {
-        return new Response(JSON.stringify({status:"error", message:"Unauthorized"}), { status: 401, headers: corsHeaders });
+        return new Response("Unauthorized", { status: 401 });
       }
-
       const action = pathname.split('/').pop();
-      
-      // 【修復點】構建完整的 GAS URL，包含原始請求的所有參數 (如 lineUid)
       const gasUrl = new URL(env.APPS_SCRIPT_URL);
-      url.searchParams.forEach((value, key) => {
-        gasUrl.searchParams.set(key, value);
-      });
+      url.searchParams.forEach((v, k) => gasUrl.searchParams.set(k, v));
       gasUrl.searchParams.set("action", action);
-      
       try {
-        let bodyText = (request.method === "POST") ? await request.text() : null;
-        const gasRes = await fetch(gasUrl.toString(), { 
-          method: request.method, 
-          redirect: "follow", 
-          headers: { "Content-Type": "application/json" }, 
-          body: bodyText 
-        });
-        const resText = await gasRes.text();
-        return new Response(resText, { headers: { "Content-Type": "application/json", ...corsHeaders } });
-      } catch (e) {
-        return new Response(JSON.stringify({status:"error", message: e.toString()}), { status: 500, headers: corsHeaders });
-      }
+        const bodyText = (request.method === "POST") ? await request.text() : null;
+        const gasRes = await fetch(gasUrl.toString(), { method: request.method, redirect: "follow", headers: { "Content-Type": "application/json" }, body: bodyText });
+        return new Response(await gasRes.text(), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+      } catch (e) { return new Response(e.toString(), { status: 500 }); }
     }
 
-    // 4. Webhook 處理
+    // 4. Webhook 處理 (含強制動畫)
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -72,6 +57,7 @@ export default {
         for (const event of body.events) {
           ctx.waitUntil(forwardToWP(bodyText, request.headers, env));
           if (event.type === "message" && event.message.type === "text") {
+            // 【修復：每一次等待都回應動畫】
             ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
             ctx.waitUntil(handleAIRequest(event, env));
           }
@@ -79,8 +65,7 @@ export default {
         return new Response("OK");
       } catch (e) { return new Response("OK"); }
     }
-
-    return new Response("LifeUpgrade Service Ready", { status: 200 });
+    return new Response("Action Service Active", { status: 200 });
   }
 };
 
