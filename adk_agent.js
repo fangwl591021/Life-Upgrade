@@ -7,9 +7,8 @@ export async function handleAIRequest(event, env) {
 
   // --- 【Manus 準則 1：核心功能硬攔截 - 執行後物理 Return】 ---
 
-  // 1. 取消報名流程 (優先權最高，防止 AI 介入)
-  // 匹配格式：我想取消報名 (單號:R12345678)
-  const cancelMatch = userMessage.match(/我想取消報名\s*\([\s\u3000]*單號[\s\u3000]*[:：][\s\u3000]*(.+?)[\s\u3000]*\)/);
+  // 1. 取消報名流程 (強化 Regex 寬容度，確保不被 AI 搶話)
+  const cancelMatch = userMessage.match(/取消報名.*單號.*[:：]([R0-9]+)/i);
   if (cancelMatch) {
     const orderId = cancelMatch[1].trim();
     try {
@@ -17,10 +16,10 @@ export async function handleAIRequest(event, env) {
       if (result.status === "success") {
         return await replyToLINE(event.replyToken, `已為您取消單號：${orderId} 的預約申請。✨\n期待下次能為您服務！`, null, env);
       } else {
-        return await replyToLINE(event.replyToken, `取消失敗：${result.message || '查無此訂單'}`, null, env);
+        return await replyToLINE(event.replyToken, `抱歉，取消失敗：${result.message || '查無此訂單'}`, null, env);
       }
     } catch (e) {
-      return await replyToLINE(event.replyToken, "系統處理取消請求時稍忙，請稍後輸入「我的預約」確認狀態。", null, env);
+      return await replyToLINE(event.replyToken, "系統處理取消請求時稍忙，請輸入「我的預約」查看狀態。", null, env);
     }
   }
 
@@ -67,7 +66,7 @@ export async function handleAIRequest(event, env) {
 }
 
 async function callDualEngineAI(event, userMessage, env) {
-  const systemPrompt = "你是『人生進化 Action』專業客服。命令：嚴格禁止虛構課程，嚴格禁止閒聊。若問及非課程諮詢，請回覆：『抱歉，我只能協助本系統相關課程諮詢。』格式：不加粗、不包框、不主動詢問興趣。";
+  const systemPrompt = "你是『人生進化 Action』專業客服。命令：嚴格禁止虛構課程，嚴格禁止閒聊。若問及非課程諮詢或指令，請回覆：『抱歉，我只能協助本系統相關課程諮詢。』格式：不加粗、不包框、不主動詢問興趣。";
   try {
     const oRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
