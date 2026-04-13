@@ -15,7 +15,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-    // 1. 路徑正規化
+    // 1. 路徑正規化 (處理雙斜線與手機 URL 異常)
     let pathname = url.pathname.replace(/\/+/g, '/');
     if (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1);
 
@@ -28,7 +28,7 @@ export default {
     if (pathname === "/desc") return await handleLiffDescription(idParam, env);
     if (pathname === "/admin") return await handleAdminPage(env);
 
-    // 3. API 代理
+    // 3. API 代理層 (負責資料存取與認證)
     if (pathname.startsWith("/api/")) {
       const isAdminAction = pathname.startsWith("/api/admin/");
       const u = request.headers.get("X-Admin-User");
@@ -47,7 +47,7 @@ export default {
       } catch (e) { return new Response(e.toString(), { status: 500 }); }
     }
 
-    // 4. Webhook 處理 (含強制動畫)
+    // 4. Webhook 處理 (核心修復：強制動畫與硬攔截)
     if (request.method === "POST") {
       try {
         const bodyText = await request.text();
@@ -55,16 +55,20 @@ export default {
         if (!body.events || body.events.length === 0) return new Response("OK");
 
         for (const event of body.events) {
+          // A. 轉發 WP (背景執行)
           ctx.waitUntil(forwardToWP(bodyText, request.headers, env));
+
           if (event.type === "message" && event.message.type === "text") {
-            // 【修復：每一次等待都回應動畫】
-            ctx.waitUntil(triggerLoadingAnimation(event.source.userId, env));
+            // B. 【修復】強制每一則文字訊息都啟動等待動畫，並確保優先權
+            await triggerLoadingAnimation(event.source.userId, env);
+            // C. 進入 AI 代理 (內含取消報名的硬攔截)
             ctx.waitUntil(handleAIRequest(event, env));
           }
         }
         return new Response("OK");
       } catch (e) { return new Response("OK"); }
     }
+
     return new Response("Action Service Active", { status: 200 });
   }
 };
