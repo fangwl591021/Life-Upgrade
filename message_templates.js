@@ -1,10 +1,10 @@
 /**
- * LINE Flex Message 範本庫 (找回成功流程的視覺核心)
+ * LINE Flex Message 範本庫 - 找回成功流程的視覺核心
  */
 export function generateCategoryFlexMessage(categories) {
   return {
     type: "flex",
-    altText: "請選擇課程類別",
+    altText: "請選擇課程階段",
     contents: {
       type: "carousel",
       contents: categories.map(cat => ({
@@ -78,7 +78,7 @@ export function generateOrderListFlexMessage(orders) {
           type: "box",
           layout: "vertical",
           contents: [
-            { type: "text", text: "訂單 ID: " + o.orderId, size: "xs", color: "#aaaaaa" },
+            { type: "text", text: "單號: " + o.orderId, size: "xs", color: "#aaaaaa" },
             { type: "text", text: o.courseName, weight: "bold", size: "md", margin: "sm", wrap: true },
             { type: "text", text: "金額: $" + o.amount, size: "sm", margin: "xs" },
             { type: "text", text: "狀態: " + o.status, weight: "bold", size: "sm", color: o.status === "已確認" ? "#1DB446" : "#F59E0B", margin: "sm" }
