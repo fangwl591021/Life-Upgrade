@@ -4,7 +4,7 @@ compatibility_date = "2024-04-10"
 
 [vars]
 WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxAYZxchY1tnruGa5EBd_A8jiMEBZ3juEf9i8VJh0YfmGq6yoBr8Ss2lXTuhwwpsocHg/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxAYZxchY1tnruGa5EBd_A8jiMEBZ3juEf9i8VJh0YfmGq6yoBr8Ss2lXTuhwwpsocHg/exechttps://script.google.com/macros/s/AKfycbxSrPiD6XLqrBc1O__989r0esRpVyPJQQ3iiHDpzsAXXTXE7EW_gRxDVvI8_SRowOoPEg/exec
 ADMIN_USERNAME = "ADMIN"
 ADMIN_PASSWORD = "@1234"
 # 請確保在 Cloudflare Dashboard 的 Secrets 區設定以下機密變數：
