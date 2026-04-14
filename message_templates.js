@@ -1,20 +1,29 @@
 /**
- * LINE Flex Message 範本庫 - 找回成功流程的視覺核心
+ * LINE Flex Message 範本庫 - 還原 5:47 PM 成功視覺
+ * 規格：small bubble, hero image (1.5:1), XL置中標題, 藍色按鈕
  */
+
 export function generateCategoryFlexMessage(categories) {
   return {
     type: "flex",
-    altText: "請選擇課程階段",
+    altText: "請選擇您感興趣的課程類型：",
     contents: {
       type: "carousel",
       contents: categories.map(cat => ({
         type: "bubble",
-        size: "micro",
+        size: "small",
+        hero: {
+          type: "image",
+          url: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=500&auto=format&fit=crop",
+          size: "full",
+          aspectMode: "cover",
+          aspectRatio: "1.5:1"
+        },
         body: {
           type: "box",
           layout: "vertical",
-          contents: [{ type: "text", text: cat, weight: "bold", size: "md", align: "center", color: "#111111" }],
-          paddingAll: "20px"
+          contents: [{ type: "text", text: cat, weight: "bold", size: "xl", align: "center", color: "#111111" }],
+          paddingAll: "15px"
         },
         footer: {
           type: "box",
@@ -23,9 +32,10 @@ export function generateCategoryFlexMessage(categories) {
             type: "button",
             action: { type: "message", label: "查看課程", text: "我想查詢 " + cat + " 的課程" },
             style: "primary",
-            color: "#1DB446",
-            height: "sm"
-          }]
+            color: "#007AFF",
+            height: "md"
+          }],
+          paddingAll: "10px"
         }
       }))
     }
@@ -41,13 +51,19 @@ export function generateCourseFlexMessage(courses) {
       contents: courses.slice(0, 10).map(c => ({
         type: "bubble",
         size: "small",
-        hero: { type: "image", url: c.imageUrl || "https://via.placeholder.com/300x200", size: "full", aspectMode: "cover", aspectRatio: "1.5:1" },
+        hero: {
+          type: "image",
+          url: c.imageUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=500&auto=format&fit=crop",
+          size: "full",
+          aspectMode: "cover",
+          aspectRatio: "1.5:1"
+        },
         body: {
           type: "box",
           layout: "vertical",
           contents: [
             { type: "text", text: c.name, weight: "bold", size: "md", wrap: true },
-            { type: "text", text: "$" + c.price, weight: "bold", size: "lg", color: "#E63946", margin: "md" }
+            { type: "text", text: "$" + (c.price || 0), weight: "bold", size: "lg", color: "#E63946", margin: "md" }
           ]
         },
         footer: {
@@ -95,14 +111,14 @@ export function generateOrderListFlexMessage(orders) {
               style: "primary",
               color: "#1DB446",
               height: "sm",
-              displayMode: o.status === "待匯款" ? "flex" : "none"
+              displayMode: (o.status === "待匯款" || o.status === "待處理") ? "flex" : "none"
             },
             {
               type: "button",
               action: { type: "message", label: "取消預約", text: "我想取消報名 (單號:" + o.orderId + ")" },
               style: "secondary",
               height: "sm",
-              displayMode: o.status === "待匯款" ? "flex" : "none"
+              displayMode: (o.status === "待匯款" || o.status === "待處理") ? "flex" : "none"
             }
           ]
         }
