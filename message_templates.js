@@ -1,59 +1,112 @@
-export function generateOrderListFlexMessage(orders) {
-  if (!orders || orders.length === 0) return null;
-  const bubbles = orders.map(order => ({
-    type: "bubble", size: "kilo",
-    body: { type: "box", layout: "vertical", spacing: "md", contents: [
-      { type: "text", text: "報名資訊確認", size: "lg", color: "#1DB446" },
-      { type: "separator" },
-      { type: "box", layout: "vertical", spacing: "sm", contents: [
-        { type: "text", text: order.courseName, size: "md", wrap: true, color: "#1e293b" },
-        { type: "text", text: "預約單號: " + order.orderId, size: "sm", color: "#64748b" },
-        { type: "text", text: "預約金額: NT$ " + order.amount, size: "lg", color: "#ef4444" },
-        { type: "text", text: "處理狀態: " + order.status, size: "md", color: "#1e293b" }
-      ]}
-    ]},
-    footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
-      { type: "button", action: { type: "uri", label: "回報匯款", uri: "https://lifeupgrade.fangwl591021.workers.dev/pay?orderId=" + order.orderId }, style: "primary", height: "md", color: "#1DB446" },
-      { type: "button", action: { type: "message", label: "取消報名", text: "我想取消報名 (單號:" + order.orderId + ")" }, style: "secondary", height: "md" }
-    ]}
-  }));
-  return { type: "flex", altText: "您的預約紀錄", contents: { type: "carousel", contents: bubbles } };
-}
-
+/**
+ * LINE Flex Message 範本庫 (找回成功流程的視覺核心)
+ */
 export function generateCategoryFlexMessage(categories) {
-  if (!categories || categories.length === 0) return null;
-  const bubbles = categories.map(category => ({
-    type: "bubble", size: "micro",
-    body: { type: "box", layout: "vertical", paddingAll: "0px", contents: [
-      { type: "image", url: "https://s3.us-west-1.wasabisys.com/aitw/2026/04/c81e728d9d4c2f636f067f89cc14862c.png", size: "full", aspectRatio: "20:13", aspectMode: "cover" },
-      { type: "box", layout: "vertical", paddingAll: "sm", contents: [{ type: "text", text: category, size: "md", align: "center", color: "#1e293b" }]}
-    ]},
-    footer: { type: "box", layout: "vertical", paddingAll: "xs", contents: [
-      { type: "button", action: { type: "message", label: "查看課程", text: "我想查詢 " + category + " 的課程" }, style: "primary", height: "sm", color: "#007AFF" }
-    ]}
-  }));
-  return { type: "flex", altText: "選擇課程類型", contents: { type: "carousel", contents: bubbles } };
+  return {
+    type: "flex",
+    altText: "請選擇課程類別",
+    contents: {
+      type: "carousel",
+      contents: categories.map(cat => ({
+        type: "bubble",
+        size: "micro",
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [{ type: "text", text: cat, weight: "bold", size: "md", align: "center", color: "#111111" }],
+          paddingAll: "20px"
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          contents: [{
+            type: "button",
+            action: { type: "message", label: "查看課程", text: "我想查詢 " + cat + " 的課程" },
+            style: "primary",
+            color: "#1DB446",
+            height: "sm"
+          }]
+        }
+      }))
+    }
+  };
 }
 
 export function generateCourseFlexMessage(courses) {
-  if (!courses || courses.length === 0) return null;
-  const bubbles = courses.slice(0, 10).map(course => ({
-    type: "bubble", size: "mega",
-    body: { type: "box", layout: "vertical", paddingAll: "0px", contents: [
-      { type: "image", url: course.imageUrl || "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_cafe.png", size: "full", aspectRatio: "20:13", aspectMode: "cover" },
-      { type: "box", layout: "vertical", paddingAll: "lg", spacing: "sm", contents: [
-        { type: "text", text: course.name, size: "lg", color: "#1e293b", wrap: true },
-        { type: "text", text: (course.description || ""), size: "sm", color: "#64748b", wrap: true, maxLines: 5 },
-        { type: "text", text: "NT $" + course.price + " 起", color: "#ef4444", size: "xl", align: "end", margin: "md" }
-      ]}
-    ]},
-    footer: { type: "box", layout: "vertical", spacing: "md", contents: [
-      { type: "separator" },
-      { type: "box", layout: "horizontal", spacing: "md", contents: [
-        { type: "button", action: { type: "uri", label: "詳情", uri: "https://lifeupgrade.fangwl591021.workers.dev/desc?id=" + course.id }, style: "link", height: "sm" },
-        { type: "button", action: { type: "message", label: "預約報名", text: "我想預約 " + course.name + " (編號:" + course.id + ", 金額:" + course.price + ")" }, style: "primary", height: "md", color: "#007AFF" }
-      ]}
-    ]}
-  }));
-  return { type: "flex", altText: "人生進化 Action 精選課程", contents: { type: "carousel", contents: bubbles } };
+  return {
+    type: "flex",
+    altText: "精選課程列表",
+    contents: {
+      type: "carousel",
+      contents: courses.slice(0, 10).map(c => ({
+        type: "bubble",
+        size: "small",
+        hero: { type: "image", url: c.imageUrl || "https://via.placeholder.com/300x200", size: "full", aspectMode: "cover", aspectRatio: "1.5:1" },
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            { type: "text", text: c.name, weight: "bold", size: "md", wrap: true },
+            { type: "text", text: "$" + c.price, weight: "bold", size: "lg", color: "#E63946", margin: "md" }
+          ]
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          contents: [{
+            type: "button",
+            action: { type: "message", label: "立即預約", text: "我想預約 " + c.name + " (編號:" + c.id + ", 金額:" + c.price + ")" },
+            style: "primary",
+            color: "#007AFF"
+          }]
+        }
+      }))
+    }
+  };
+}
+
+export function generateOrderListFlexMessage(orders) {
+  return {
+    type: "flex",
+    altText: "您的預約紀錄",
+    contents: {
+      type: "carousel",
+      contents: orders.slice(0, 5).map(o => ({
+        type: "bubble",
+        size: "small",
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            { type: "text", text: "訂單 ID: " + o.orderId, size: "xs", color: "#aaaaaa" },
+            { type: "text", text: o.courseName, weight: "bold", size: "md", margin: "sm", wrap: true },
+            { type: "text", text: "金額: $" + o.amount, size: "sm", margin: "xs" },
+            { type: "text", text: "狀態: " + o.status, weight: "bold", size: "sm", color: o.status === "已確認" ? "#1DB446" : "#F59E0B", margin: "sm" }
+          ]
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: [
+            {
+              type: "button",
+              action: { type: "uri", label: "回報匯款", uri: "https://lifeupgrade.fangwl591021.workers.dev/pay?orderId=" + o.orderId },
+              style: "primary",
+              color: "#1DB446",
+              height: "sm",
+              displayMode: o.status === "待匯款" ? "flex" : "none"
+            },
+            {
+              type: "button",
+              action: { type: "message", label: "取消預約", text: "我想取消報名 (單號:" + o.orderId + ")" },
+              style: "secondary",
+              height: "sm",
+              displayMode: o.status === "待匯款" ? "flex" : "none"
+            }
+          ]
+        }
+      }))
+    }
+  };
 }
