@@ -4,6 +4,6 @@ compatibility_date = "2024-04-10"
 
 [vars]
 WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxiqGjdU06yEo961UvKm1oC4_8fkmYCnl8dnIgxTG1gCh2j0_XPBV83nJeNL3oNABZW1A/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxsZrngMcOdX95DAKYuKUnrNys_8ycySb9EeXXJyX6o2eT-XDPiK4sFXShkcFoSFNijTw/exec"
 ADMIN_USERNAME = "ADMIN"
 ADMIN_PASSWORD = "@1234"
