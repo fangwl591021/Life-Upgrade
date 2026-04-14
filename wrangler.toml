@@ -4,6 +4,11 @@ compatibility_date = "2024-04-10"
 
 [vars]
 WP_WEBHOOK_URL = "https://aiwe.cc/index.php/line_login/7364/"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxsZrngMcOdX95DAKYuKUnrNys_8ycySb9EeXXJyX6o2eT-XDPiK4sFXShkcFoSFNijTw/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxAYZxchY1tnruGa5EBd_A8jiMEBZ3juEf9i8VJh0YfmGq6yoBr8Ss2lXTuhwwpsocHg/exec"
 ADMIN_USERNAME = "ADMIN"
 ADMIN_PASSWORD = "@1234"
+# 請確保在 Cloudflare Dashboard 的 Secrets 區設定以下機密變數：
+# LINE_CHANNEL_ACCESS_TOKEN
+# OPENAI_API_KEY
+# TELEGRAM_TOKEN
+# TELEGRAM_CHAT_ID
