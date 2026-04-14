@@ -1,6 +1,6 @@
 /**
  * 人生進化 Action - 意圖硬攔截核心 (adk_agent.js)
- * 物理鎖死：命中關鍵字後強制 Return，絕對不准 AI 搶話。
+ * 物理鎖死：關鍵字命中後 100% 阻斷 AI 閒聊，且確保一定會有回應。
  */
 import { getCourseCategories, getCourseList, createOrder, getUserOrders, getUserProfile, cancelOrder } from './google_sheets_handler.js';
 import { generateCategoryFlexMessage, generateCourseFlexMessage, generateOrderListFlexMessage } from './message_templates.js';
@@ -14,16 +14,16 @@ export async function handleAIRequest(event, env) {
   const cleanMsg = rawMsg.replace(/[\s\u3000()（）:：,，]/g, "");
 
   try {
-    // 1. 查看選單 (還原 5:47 PM 成功流程：生成圖片 FLEX)
-    if (cleanMsg.includes("看課程") || cleanMsg.includes("選單") || cleanMsg === "我想報名" || cleanMsg === "9") {
+    // 1. 【硬攔截】課程選單 - 物理隔離 AI
+    if (cleanMsg.includes("看課程") || cleanMsg.includes("選單") || cleanMsg === "9") {
       const cats = await getCourseCategories(env);
       if (cats && cats.length > 0) {
-        return await replyToLINE(replyToken, "請選擇您感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
+        return await replyToLINE(replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
       }
-      return await replyToLINE(replyToken, "目前資料庫更新中，請稍後輸入「選單」重試。", null, env);
+      return await replyToLINE(replyToken, "目前資料庫連線中，請稍後輸入「選單」重新查詢。", null, env);
     }
 
-    // 2. 我的預約紀錄
+    // 2. 預約紀錄攔截
     if (cleanMsg.includes("我的預約") || cleanMsg.includes("紀錄")) {
       const orders = await getUserOrders(userId, env);
       if (orders && orders.length > 0) {
@@ -43,37 +43,59 @@ export async function handleAIRequest(event, env) {
       }
     }
 
-  } catch (err) {
-    // 物理隔離 AI：報錯時也必須中斷執行序
-    return await replyToLINE(replyToken, "系統連線繁忙，請點選選單重新嘗試。", null, env);
-  }
+    // 4. 特定分類查詢
+    if (cleanMsg.includes("我想查詢") && cleanMsg.includes("課程")) {
+      const catMatch = rawMsg.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
+      if (catMatch) {
+        const catName = catMatch[1].trim();
+        const courses = await getCourseList(catName, env);
+        if (courses && courses.length > 0) {
+          return await replyToLINE(replyToken, `這是「${catName}」的精選課程：`, generateCourseFlexMessage(courses), env);
+        }
+      }
+    }
 
-  // --- 僅非功能性關鍵字時觸發 AI ---
-  return await callDualEngineAI(event, rawMsg, env);
+    // --- 若非上述關鍵字，才進入 AI 區域 ---
+    return await callDualEngineAI(event, rawMsg, env);
+
+  } catch (err) {
+    // 物理阻斷：即便報錯也必須回覆 LINE，不能沒反應
+    console.error("ADK Agent Error:", err);
+    return await replyToLINE(replyToken, "系統連線繁忙，請點選功能選單重新嘗試。", null, env);
+  }
 }
 
 async function callDualEngineAI(event, msg, env) {
-  const systemPrompt = "你是專業客服。嚴格指令：1. 禁止虛構課程 2. 禁止閒聊。非指令請回：『抱歉，我只能協助本系統課程諮詢，請點選功能選單。』";
+  const prompt = "你是『人生進化 Action』專業客服。嚴格指令：禁止閒聊、禁止詢問興趣。非指令請回：『抱歉，我只能協助課程諮詢，請點選功能選單。』";
   try {
-    const oRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: systemPrompt }, { role: "user", content: msg }] })
+      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: prompt }, { role: "user", content: msg }] })
     });
-    const oData = await oRes.json();
-    const text = oData.choices?.[0]?.message?.content;
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
     if (text) return await replyToLINE(event.replyToken, text, null, env);
   } catch (e) {}
-  await replyToLINE(event.replyToken, "系統稍忙，請直接使用功能選單。", null, env);
+  // 兜底回覆
+  await replyToLINE(event.replyToken, "系統稍忙，請直接使用功能選單查詢。", null, env);
 }
 
 async function replyToLINE(replyToken, text, flex, env) {
   const messages = [];
   if (text) messages.push({ type: "text", text: text });
   if (flex) messages.push(flex);
+  
+  // 核心檢查：如果沒有 Token 則無法回覆
+  const token = env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) {
+    console.error("Missing LINE_CHANNEL_ACCESS_TOKEN");
+    return;
+  }
+
   await fetch("https://api.line.me/v2/bot/message/reply", { 
     method: "POST", 
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` }, 
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
     body: JSON.stringify({ replyToken, messages }) 
   });
 }
