@@ -1,6 +1,7 @@
 /**
  * 人生進化 Action - 核心大腦 (adk_agent.js)
  * 修正：強化錯誤捕捉，確保「非 WP 指令」時 100% 回應
+ * 增加：測試指令 111 回應 (非 WP 區域)
  */
 import { getCourseCategories, getCourseList } from './google_sheets_handler.js';
 import { generateIntroGigaFlex, generateCourseFlexMessage } from './message_templates.js';
@@ -19,6 +20,8 @@ export async function handleAIRequest(event, env) {
   }
 
   // 2. 【物理隔離層】系統級指令 (不進 AI)
+  
+  // 檢測指令
   if (cleanMsg === "檢測") {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
@@ -35,13 +38,19 @@ export async function handleAIRequest(event, env) {
     }
   }
 
+  // [新增] 測試指令 111：直接回應不進 AI
+  if (cleanMsg === "111") {
+    return await replyToLINE(replyToken, "想了解哪種課程", null, env);
+  }
+
+  // 選單指令
   if (cleanMsg === "9" || cleanMsg === "選單") {
     const cats = await getCourseCategories(env);
     if (!cats || cats.length === 0) return await replyToLINE(replyToken, "⚠️ 無法讀取課程分類，請確認試算表 M 欄。", null, env);
     return await replyToLINE(replyToken, null, generateIntroGigaFlex(cats), env);
   }
 
-  // 3. 【AI 語義解析層】
+  // 3. 【AI 語義解析層】使用 Gemini 1.5 Flash
   try {
     const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
       method: "POST",
@@ -67,6 +76,7 @@ export async function handleAIRequest(event, env) {
     try {
       intent = JSON.parse(cleanJson);
     } catch (e) {
+      // 若 JSON 解析失敗，直接回傳 AI 原始文字
       return await replyToLINE(replyToken, data.candidates?.[0]?.content?.parts?.[0]?.text || "我不太明白您的意思，請輸入 9 查看選單。", null, env);
     }
 
@@ -84,7 +94,6 @@ export async function handleAIRequest(event, env) {
     return await replyToLINE(replyToken, intent.replyText || "您好！有什麼我可以幫您的嗎？您可以輸入 9 查看最新課程。", null, env);
 
   } catch (err) {
-    // 【關鍵修正】非 WP 指令發生錯誤時，必須回覆原因，不能沈默
     console.error("Agent Error:", err);
     return await replyToLINE(replyToken, `助理大腦連線異常：${err.message}\n請輸入「9」直接開啟功能選單。`, null, env);
   }
@@ -99,6 +108,6 @@ async function replyToLINE(replyToken, text, flex, env) {
   await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
-    body: JSON.stringify({ replyToken, messages })
+    body: JSON.stringify({ replyToken: replyToken, messages: messages })
   });
 }
