@@ -1,101 +1,104 @@
 /**
- * 人生進化 Action - 意圖硬攔截核心 (adk_agent.js)
- * 物理鎖死：關鍵字命中後 100% 阻斷 AI 閒聊，且確保一定會有回應。
+ * 人生進化 Action - 核心大腦 (adk_agent.js)
+ * 修正：強化錯誤捕捉，確保「非 WP 指令」時 100% 回應
  */
-import { getCourseCategories, getCourseList, createOrder, getUserOrders, getUserProfile, cancelOrder } from './google_sheets_handler.js';
-import { generateCategoryFlexMessage, generateCourseFlexMessage, generateOrderListFlexMessage } from './message_templates.js';
+import { getCourseCategories, getCourseList } from './google_sheets_handler.js';
+import { generateIntroGigaFlex, generateCourseFlexMessage } from './message_templates.js';
+
+// WP 專屬關鍵字：AI 遇到這些字眼會保持沉默
+const WP_EXCLUSIVE_COMMANDS = ["會員專區", "登入", "註冊", "綁定", "我的帳號", "測試"];
 
 export async function handleAIRequest(event, env) {
-  const rawMsg = event.message.text.trim();
-  const userId = event.source.userId;
+  const rawMessage = (event.message.text || "").trim();
+  const cleanMsg = rawMessage.replace(/[\s\u3000]/g, "");
   const replyToken = event.replyToken;
 
-  // 全字元清洗匹配
-  const cleanMsg = rawMsg.replace(/[\s\u3000()（）:：,，]/g, "");
+  // 1. 【路由過濾層】WP 指令攔截
+  if (WP_EXCLUSIVE_COMMANDS.some(cmd => cleanMsg.includes(cmd))) {
+    return; // 讓 WP 處理，AI 不回話
+  }
 
-  try {
-    // 1. 【硬攔截】課程選單 - 物理隔離 AI
-    if (cleanMsg.includes("看課程") || cleanMsg.includes("選單") || cleanMsg === "9") {
+  // 2. 【物理隔離層】系統級指令 (不進 AI)
+  if (cleanMsg === "檢測") {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: "ping" }] }] })
+      });
+      const aiStatus = res.ok ? "🟢 Gemini 正常" : `🔴 Gemini 異常 (${res.status})`;
       const cats = await getCourseCategories(env);
-      if (cats && cats.length > 0) {
-        return await replyToLINE(replyToken, "請選擇感興趣的課程類型：", generateCategoryFlexMessage(cats), env);
-      }
-      return await replyToLINE(replyToken, "目前資料庫連線中，請稍後輸入「選單」重新查詢。", null, env);
+      const gasStatus = (cats && cats.length > 0) ? `🟢 GAS 正常 (${cats.length}筆)` : "🔴 GAS 無資料";
+      return await replyToLINE(replyToken, `【系統診斷報告】\nAI大腦：${aiStatus}\n資料庫：${gasStatus}`, null, env);
+    } catch (e) {
+      return await replyToLINE(replyToken, `❌ 診斷失敗：${e.message}`, null, env);
+    }
+  }
+
+  if (cleanMsg === "9" || cleanMsg === "選單") {
+    const cats = await getCourseCategories(env);
+    if (!cats || cats.length === 0) return await replyToLINE(replyToken, "⚠️ 無法讀取課程分類，請確認試算表 M 欄。", null, env);
+    return await replyToLINE(replyToken, null, generateIntroGigaFlex(cats), env);
+  }
+
+  // 3. 【AI 語義解析層】
+  try {
+    const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ 
+          parts: [{ 
+            text: `你是一個專業課程助理。請分析意圖並回傳 JSON: {"intent":"SHOW_MENU"|"QUERY_COURSE"|"CHAT", "keyword":"", "replyText":""}\n使用者說：${rawMessage}` 
+          }] 
+        }]
+      })
+    });
+
+    if (!aiRes.ok) {
+      const err = await aiRes.json();
+      throw new Error(`AI API 報錯: ${aiRes.status} ${err.error?.message || ""}`);
     }
 
-    // 2. 預約紀錄攔截
-    if (cleanMsg.includes("我的預約") || cleanMsg.includes("紀錄")) {
-      const orders = await getUserOrders(userId, env);
-      if (orders && orders.length > 0) {
-        return await replyToLINE(replyToken, "這是您的最新預約紀錄：", generateOrderListFlexMessage(orders), env);
-      }
-      return await replyToLINE(replyToken, "目前查無預約紀錄喔！快去看看精彩課程吧。", null, env);
+    const data = await aiRes.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    let intent;
+    try {
+      intent = JSON.parse(cleanJson);
+    } catch (e) {
+      return await replyToLINE(replyToken, data.candidates?.[0]?.content?.parts?.[0]?.text || "我不太明白您的意思，請輸入 9 查看選單。", null, env);
     }
 
-    // 3. 取消報名指令
-    if (cleanMsg.includes("取消報名")) {
-      const orderMatch = rawMsg.match(/單號\s*[:：]\s*([R0-9a-zA-Z]+)/i);
-      if (orderMatch) {
-        const orderId = orderMatch[1].trim();
-        const result = await cancelOrder({ lineUid: userId, orderId: orderId }, env);
-        const txt = result.status === "success" ? `單號 ${orderId} 預約已成功取消。🗑️` : `取消失敗：${result.message}`;
-        return await replyToLINE(replyToken, txt, null, env);
-      }
+    if (intent.intent === "SHOW_MENU") {
+      const cats = await getCourseCategories(env);
+      return await replyToLINE(replyToken, null, generateIntroGigaFlex(cats), env);
     }
 
-    // 4. 特定分類查詢
-    if (cleanMsg.includes("我想查詢") && cleanMsg.includes("課程")) {
-      const catMatch = rawMsg.match(/我想查詢[\s\u3000]*(.+?)[\s\u3000]*的課程/);
-      if (catMatch) {
-        const catName = catMatch[1].trim();
-        const courses = await getCourseList(catName, env);
-        if (courses && courses.length > 0) {
-          return await replyToLINE(replyToken, `這是「${catName}」的精選課程：`, generateCourseFlexMessage(courses), env);
-        }
-      }
+    if (intent.intent === "QUERY_COURSE" && intent.keyword) {
+      const courses = await getCourseList(intent.keyword, env);
+      if (courses.length > 0) return await replyToLINE(replyToken, `為您找到「${intent.keyword}」相關課程：`, generateCourseFlexMessage(courses), env);
+      return await replyToLINE(replyToken, `目前找不到「${intent.keyword}」的課程。`, null, env);
     }
 
-    // --- 若非上述關鍵字，才進入 AI 區域 ---
-    return await callDualEngineAI(event, rawMsg, env);
+    return await replyToLINE(replyToken, intent.replyText || "您好！有什麼我可以幫您的嗎？您可以輸入 9 查看最新課程。", null, env);
 
   } catch (err) {
-    // 物理阻斷：即便報錯也必須回覆 LINE，不能沒反應
-    console.error("ADK Agent Error:", err);
-    return await replyToLINE(replyToken, "系統連線繁忙，請點選功能選單重新嘗試。", null, env);
+    // 【關鍵修正】非 WP 指令發生錯誤時，必須回覆原因，不能沈默
+    console.error("Agent Error:", err);
+    return await replyToLINE(replyToken, `助理大腦連線異常：${err.message}\n請輸入「9」直接開啟功能選單。`, null, env);
   }
-}
-
-async function callDualEngineAI(event, msg, env) {
-  const prompt = "你是『人生進化 Action』專業客服。嚴格指令：禁止閒聊、禁止詢問興趣。非指令請回：『抱歉，我只能協助課程諮詢，請點選功能選單。』";
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: prompt }, { role: "user", content: msg }] })
-    });
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content;
-    if (text) return await replyToLINE(event.replyToken, text, null, env);
-  } catch (e) {}
-  // 兜底回覆
-  await replyToLINE(event.replyToken, "系統稍忙，請直接使用功能選單查詢。", null, env);
 }
 
 async function replyToLINE(replyToken, text, flex, env) {
   const messages = [];
   if (text) messages.push({ type: "text", text: text });
   if (flex) messages.push(flex);
-  
-  // 核心檢查：如果沒有 Token 則無法回覆
-  const token = env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) {
-    console.error("Missing LINE_CHANNEL_ACCESS_TOKEN");
-    return;
-  }
+  if (messages.length === 0) return;
 
-  await fetch("https://api.line.me/v2/bot/message/reply", { 
-    method: "POST", 
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
-    body: JSON.stringify({ replyToken, messages }) 
+  await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+    body: JSON.stringify({ replyToken, messages })
   });
 }
